@@ -1,0 +1,842 @@
+/* === TETR.IO 완전 재디자인 === */
+@import url('https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700;900&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    /* TETR.IO 정확한 색상 */
+    --bg-primary: #0a0a0c;
+    --bg-secondary: #111115;
+    --bg-tertiary: #1a1a20;
+    --accent-cyan: #00ffff;
+    --accent-purple: #8b5cf6;
+    --accent-pink: #ec4899;
+    --accent-orange: #f97316;
+    --text-primary: #ffffff;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --border-subtle: #27272a;
+    --border-accent: #3f3f46;
+    --glow-cyan: 0 0 20px rgba(0, 255, 255, 0.5);
+    --glow-purple: 0 0 20px rgba(139, 92, 246, 0.5);
+    --glow-pink: 0 0 20px rgba(236, 72, 153, 0.5);
+}
+
+body {
+    background: var(--bg-primary);
+    background-image: 
+        radial-gradient(circle at 25% 25%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+        linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+    color: var(--text-primary);
+    font-family: 'Titillium Web', sans-serif;
+    font-weight: 400;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* 화면 전환 애니메이션 */
+.screen {
+    display: none;
+    min-height: 100vh;
+    animation: screenFadeIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.screen.active {
+    display: block;
+}
+
+@keyframes screenFadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 컨테이너 */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* 헤드라인 */
+h1, h2, h3, h4 {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: var(--glow-cyan);
+}
+
+h1 {
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    background: linear-gradient(45deg, var(--accent-cyan), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 2rem;
+}
+
+/* 버튼 시스템 */
+.primary-btn, .secondary-btn, .action-btn, .target-btn {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border: 1px solid var(--border-accent);
+    color: var(--text-primary);
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-family: 'Titillium Web', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    position: relative;
+    overflow: hidden;
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+    font-weight: 700;
+    box-shadow: var(--glow-cyan);
+}
+
+.primary-btn:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: var(--glow-cyan), 0 10px 30px rgba(0, 255, 255, 0.3);
+}
+
+.secondary-btn:hover:not(:disabled),
+.action-btn:hover:not(:disabled),
+.target-btn:hover:not(:disabled) {
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+    transform: translateY(-1px);
+}
+
+.primary-btn:disabled, .secondary-btn:disabled, .action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 입력 필드 */
+input, select {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-accent);
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: 'Titillium Web', sans-serif;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+}
+
+input::placeholder {
+    color: var(--text-muted);
+}
+
+/* 카드 시스템 */
+.lobby-section,
+.players-section,
+.chat-section,
+.game-players-section,
+.action-section,
+.game-chat-section {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.lobby-section::before,
+.players-section::before,
+.chat-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+}
+
+/* 로비 화면 */
+#lobbyScreen .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.lobby-section {
+    width: 100%;
+    max-width: 450px;
+}
+
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.input-group input {
+    width: 100%;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.join-section {
+    display: flex;
+    gap: 8px;
+}
+
+.join-section input {
+    flex: 1;
+}
+
+/* 방 목록 */
+.room-list-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.room-list-section h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+}
+
+.room-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+}
+
+.room-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.room-item:hover:not(.full) {
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+    transform: translateX(4px);
+}
+
+.room-item.full {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.room-info .room-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.room-details {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.room-status.available {
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+.room-status.full {
+    color: var(--text-muted);
+}
+
+/* 대기실 & 게임 화면 */
+.room-header, .game-header {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.room-code {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    font-family: 'Courier New', monospace;
+}
+
+.copy-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-accent);
+    color: var(--text-secondary);
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+}
+
+.waiting-content, .game-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.game-content {
+    grid-template-columns: 250px 1fr 300px;
+}
+
+/* 플레이어 목록 */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.section-header h3 {
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.player-count {
+    font-weight: 600;
+    color: var(--accent-cyan);
+}
+
+.players-list, .game-players-list {
+    margin-bottom: 16px;
+    min-height: 200px;
+}
+
+.player-item, .game-player-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.player-item:hover, .game-player-item:hover {
+    border-color: var(--border-accent);
+    transform: translateX(2px);
+}
+
+.player-item.current-player {
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+}
+
+.player-item.dead, .game-player-item.dead {
+    opacity: 0.4;
+    filter: grayscale(100%);
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.player-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.player-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.player-badge.host {
+    background: var(--accent-orange);
+    color: var(--bg-primary);
+}
+
+.player-badge.bot {
+    background: var(--accent-purple);
+    color: var(--text-primary);
+}
+
+.player-badge.me {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+
+/* 역할 배지 */
+.role-badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.role-badge.mafia {
+    background: var(--accent-pink);
+    color: var(--bg-primary);
+    box-shadow: var(--glow-pink);
+}
+
+.role-badge.doctor {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: var(--text-primary);
+}
+
+.role-badge.police {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: var(--text-primary);
+}
+
+.role-badge.citizen {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-accent);
+    color: var(--text-secondary);
+}
+
+.role-badge.wizard {
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    color: var(--text-primary);
+    box-shadow: var(--glow-purple);
+}
+
+/* 마피아 팀 정보 */
+.mafia-team-info {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    color: var(--text-primary);
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 12px;
+    box-shadow: var(--glow-pink);
+}
+
+.team-title {
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.team-members {
+    font-size: 14px;
+    opacity: 0.95;
+}
+
+/* 채팅 */
+.chat-messages, .game-chat-messages {
+    height: 300px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.chat-message {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    animation: chatSlideIn 0.3s ease-out;
+}
+
+@keyframes chatSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message.system {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+    text-align: center;
+    font-weight: 600;
+}
+
+.chat-message.dead {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    opacity: 0.7;
+}
+
+.message-header {
+    font-weight: 600;
+    color: var(--accent-cyan);
+    margin-bottom: 2px;
+    font-size: 12px;
+}
+
+.chat-input {
+    display: flex;
+    gap: 8px;
+}
+
+.chat-input input {
+    flex: 1;
+}
+
+/* 게임 액션 */
+.action-area {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.action-btn.kill {
+    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    color: var(--text-primary);
+    box-shadow: var(--glow-pink);
+}
+
+.action-btn.save {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: var(--text-primary);
+}
+
+.action-btn.investigate {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: var(--text-primary);
+}
+
+.action-btn.vote {
+    background: linear-gradient(135deg, var(--accent-orange) 0%, #ea580c 100%);
+    color: var(--text-primary);
+}
+
+.action-btn.swap {
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+    color: var(--text-primary);
+    box-shadow: var(--glow-purple);
+}
+
+/* 대상 선택 */
+.target-selection {
+    margin-top: 16px;
+}
+
+.target-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.target-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-accent);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.target-btn:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+
+.target-btn.selected {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+}
+
+/* 결과 영역 */
+.results-area {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.result-separator {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-accent), transparent);
+    margin: 16px 0;
+}
+
+/* 게임 종료 */
+.game-end-content {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.winner-team {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 12px;
+}
+
+.winner-team.citizens {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: var(--text-primary);
+}
+
+.winner-team.mafia {
+    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    color: var(--text-primary);
+    box-shadow: var(--glow-pink);
+}
+
+/* 모달 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* 토스트 */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    box-shadow: var(--glow-cyan), 0 10px 30px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    animation: toastSlideIn 0.3s ease-out, toastSlideOut 0.3s ease-in 2.7s forwards;
+}
+
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastSlideOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(100%); }
+}
+
+/* 로딩 스피너 */
+.loading-spinner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 10, 12, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-subtle);
+    border-top: 3px solid var(--accent-cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* 유틸리티 */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.mb-1 { margin-bottom: 8px; }
+.mb-2 { margin-bottom: 16px; }
+.mb-3 { margin-bottom: 24px; }
+
+/* === 밝은 테마 (낮 시간) === */
+body.theme-light {
+    background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+    background-image: 
+        radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+        linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+}
+
+body.theme-light {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --accent-cyan: #0ea5e9;
+    --accent-purple: #8b5cf6;
+    --accent-pink: #ec4899;
+    --accent-orange: #f97316;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --border-subtle: #e2e8f0;
+    --border-accent: #cbd5e1;
+    --glow-cyan: 0 0 20px rgba(14, 165, 233, 0.3);
+    --glow-purple: 0 0 20px rgba(139, 92, 246, 0.3);
+    --glow-pink: 0 0 20px rgba(236, 72, 153, 0.3);
+}
+
+body.theme-light h1, 
+body.theme-light h2, 
+body.theme-light h3, 
+body.theme-light h4 {
+    text-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+}
+
+body.theme-light .primary-btn {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+    box-shadow: var(--glow-cyan);
+}
+
+body.theme-light .lobby-section::before,
+body.theme-light .players-section::before,
+body.theme-light .chat-section::before {
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+}
+
+body.theme-light .chat-message.system {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+}
+
+body.theme-light .toast {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    color: var(--bg-primary);
+    box-shadow: var(--glow-cyan), 0 10px 30px rgba(14, 165, 233, 0.2);
+}
+
+/* 반응형 */
+@media (max-width: 1024px) {
+    .game-content {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container { padding: 16px; }
+    .waiting-content, .game-content { 
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .room-header, .game-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    .join-section {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .lobby-section { padding: 20px; }
+    .players-section, .chat-section, 
+    .game-players-section, .action-section, 
+    .game-chat-section { padding: 16px; }
+    .chat-messages { height: 250px; }
+    .modal-content { padding: 24px; }
+    .modal-actions { flex-direction: column; }
+}

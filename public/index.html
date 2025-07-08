@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 MAFIA.IO</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 추가: 구글 폰트 Preconnect & Titillium Web -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 로비 화면 -->
+    <div id="lobbyScreen" class="screen active">
+        <div class="container">
+            <h1>🎮 MAFIA.IO</h1>
+            
+            <div class="lobby-section">
+                <div class="input-group">
+                    <label for="playerName">플레이어 이름:</label>
+                    <input type="text" id="playerName" placeholder="이름을 입력하세요" maxlength="15">
+                </div>
+                
+                <div class="button-group">
+                    <button id="createRoomBtn" class="primary-btn">방 만들기</button>
+                    <div class="join-section">
+                        <input type="text" id="roomCodeInput" placeholder="방 코드 입력" maxlength="6">
+                        <button id="joinRoomBtn" class="secondary-btn">참가하기</button>
+                    </div>
+                </div>
+
+                <div class="room-list-section">
+                    <h3>공개 방 목록</h3>
+                    <div id="roomList" class="room-list">
+                        <div class="no-rooms">아직 생성된 방이 없습니다.</div>
+                    </div>
+                    <button id="refreshRoomsBtn" class="secondary-btn">새로고침</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 대기실 화면 -->
+    <div id="waitingScreen" class="screen">
+        <div class="container">
+            <div class="room-header">
+                <h2>대기실</h2>
+                <div class="room-code">
+                    <span>방 코드: </span>
+                    <span id="currentRoomCode"></span>
+                    <button id="copyCodeBtn" class="copy-btn">📋</button>
+                </div>
+            </div>
+
+            <div class="waiting-content">
+                <!-- 플레이어 목록 -->
+                <div class="players-section">
+                    <div class="section-header">
+                        <h3>플레이어 목록</h3>
+                        <div class="player-count">
+                            <span id="currentPlayers">0</span>/<span id="maxPlayers">5</span>
+                        </div>
+                    </div>
+                    
+                    <div id="playersList" class="players-list"></div>
+                    
+                    <!-- 호스트 전용 컨트롤 -->
+                    <div id="hostControls" class="host-controls">
+                        <div class="control-group">
+                            <label for="maxPlayersSelect">최대 플레이어 수:</label>
+                            <select id="maxPlayersSelect">
+                                <option value="5">5명</option>
+                                <option value="6">6명</option>
+                                <option value="7">7명</option>
+                                <option value="8">8명</option>
+                            </select>
+                        </div>
+                        
+                        <div class="control-group">
+                            <input type="text" id="botNameInput" placeholder="봇 이름" maxlength="10">
+                            <button id="addBotBtn" class="secondary-btn">봇 추가</button>
+                        </div>
+                        
+                        <div class="control-group">
+                            <label for="voteVisibilitySelect">투표 공개:</label>
+                            <select id="voteVisibilitySelect">
+                                <option value="private">비공개</option>
+                                <option value="public" selected>공개</option>
+                            </select>
+                        </div>
+                        
+                        <button id="startGameBtn" class="primary-btn" disabled>게임 시작</button>
+                    </div>
+                </div>
+
+                <!-- 채팅 -->
+                <div class="chat-section">
+                    <div class="section-header">
+                        <h3>채팅</h3>
+                    </div>
+                    
+                    <div id="chatMessages" class="chat-messages"></div>
+                    
+                    <div class="chat-input">
+                        <input type="text" id="chatInput" placeholder="메시지를 입력하세요..." maxlength="100">
+                        <button id="sendChatBtn">전송</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="gameScreen" class="screen">
+        <div class="container">
+            <!-- 게임 상태 헤더 -->
+            <div class="game-header">
+                <div class="game-status">
+                    <h2 id="gamePhase">게임 시작</h2>
+                    <div class="round-timer">
+                        <span>라운드 <span id="currentRound">1</span></span>
+                        <div class="timer">
+                            <span id="timeLeft">--</span>초
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="player-role">
+                    <span>당신의 역할: </span>
+                    <span id="playerRole" class="role-badge">-</span>
+                </div>
+            </div>
+
+            <div class="game-content">
+                <!-- 게임 플레이어 목록 -->
+                <div class="game-players-section">
+                    <h3>플레이어 상태</h3>
+                    <div id="gamePlayersList" class="game-players-list"></div>
+                </div>
+
+                <!-- 게임 액션 영역 -->
+                <div class="action-section">
+                    <div id="actionArea" class="action-area">
+                        <h3 id="actionTitle">행동을 선택하세요</h3>
+                        <div id="actionButtons" class="action-buttons"></div>
+                        <div id="targetSelection" class="target-selection hidden">
+                            <p>대상을 선택하세요:</p>
+                            <div id="targetList" class="target-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- 결과 표시 영역 -->
+                    <div id="resultsArea" class="results-area hidden">
+                        <h3>결과</h3>
+                        <div id="resultsContent"></div>
+                    </div>
+                </div>
+
+                <!-- 게임 채팅 -->
+                <div class="game-chat-section">
+                    <h3>토론</h3>
+                    <div id="gameChatMessages" class="chat-messages"></div>
+                    <div class="chat-input">
+                        <input type="text" id="gameChatInput" placeholder="토론 중에만 채팅할 수 있습니다..." disabled maxlength="100">
+                        <button id="sendGameChatBtn" disabled>전송</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 결과 화면 -->
+    <div id="gameEndScreen" class="screen">
+        <div class="container">
+            <div class="game-end-content">
+                <h1 id="gameResult">게임 종료</h1>
+                <div id="winnerTeam" class="winner-team"></div>
+                
+                <div class="final-players">
+                    <h3>최종 플레이어 상태</h3>
+                    <div id="finalPlayersList" class="final-players-list"></div>
+                </div>
+                
+                <div class="game-end-actions">
+                    <button id="newGameBtn" class="primary-btn">새 게임</button>
+                    <button id="backToLobbyBtn" class="secondary-btn">로비로 돌아가기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달 -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="modalTitle"></h3>
+            <p id="modalMessage"></p>
+            <div class="modal-actions">
+                <button id="modalOkBtn" class="primary-btn">확인</button>
+                <button id="modalCancelBtn" class="secondary-btn">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 로딩 스피너 -->
+    <div id="loadingSpinner" class="loading-spinner hidden">
+        <div class="spinner"></div>
+        <p>로딩 중...</p>
+    </div>
+
+    <!-- 알림 토스트 -->
+    <div id="toast" class="toast hidden">
+        <span id="toastMessage"></span>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html> 
