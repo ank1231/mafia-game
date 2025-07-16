@@ -13,7 +13,270 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 봇 AI 시스템
 class BotAI {
     constructor() {
-        this.gameHistory = new Map(); // roomCode -> history
+        this.gameHistory = new Map(); // roomCode -> game history
+        this.botPersonalities = new Map(); // botId -> personality traits
+        this.fakePoliceBots = new Map(); // roomCode -> fake police bot id
+        this.fakeInvestigations = new Map(); // roomCode -> fake investigation history
+    }
+
+    // 🔄 봇 지능 초기화 시스템
+    resetBotIntelligence(roomCode) {
+        console.log(`[봇 지능 초기화] ${roomCode} 방의 모든 봇 지능 시스템을 완전히 초기화합니다.`);
+        
+        // 게임 히스토리 완전 초기화
+        this.gameHistory.delete(roomCode);
+        this.initializeRoomHistory(roomCode);
+        
+        // 봇 성향 재설정
+        this.reinitializeBotPersonalities(roomCode);
+        
+        // 🎭 가짜 경찰 시스템은 보존! (역할 배정 후 리셋되면 안됨)
+        // this.fakePoliceBots.delete(roomCode);  // 이 라인 제거!
+        // this.fakeInvestigations.delete(roomCode);  // 이 라인 제거!
+        
+        console.log(`[봇 지능 초기화] ${roomCode} 방의 봇 지능 시스템 초기화 완료 (가짜 경찰 보존)`);
+    }
+
+    // 🎭 마피아 봇 중 경찰 연기자 선택
+    selectFakePoliceBot(room) {
+        const roomCode = room.code;
+        
+        console.log(`[가짜 경찰 선택 시작] ${roomCode} 방: 마피아 봇 찾는 중...`);
+        
+        // 마피아 봇들 찾기
+        const mafiaBots = [];
+        for (const [botId, bot] of room.bots) {
+            console.log(`[봇 역할 체크] ${bot.name}: ${bot.role}, 살아있음: ${bot.alive}`);
+            if (bot.role === 'mafia' && bot.alive) {
+                mafiaBots.push(bot);
+            }
+        }
+        
+        console.log(`[마피아 봇 발견] ${roomCode} 방: 총 ${mafiaBots.length}명의 마피아 봇 발견`);
+        mafiaBots.forEach(bot => console.log(`  - ${bot.name} (ID: ${bot.id})`));
+        
+        // 마피아 봇이 2명 이상일 때만 경찰 연기 실행
+        if (mafiaBots.length >= 2) {
+            // 랜덤하게 한 명 선택
+            const selectedBot = mafiaBots[Math.floor(Math.random() * mafiaBots.length)];
+            this.fakePoliceBots.set(roomCode, selectedBot.id);
+            
+            // 가짜 조사 히스토리 초기화
+            this.fakeInvestigations.set(roomCode, []);
+            
+            console.log(`[가짜 경찰 선택 성공] ${roomCode} 방: ${selectedBot.name} (ID: ${selectedBot.id})이 경찰 연기를 담당합니다.`);
+            console.log(`[가짜 경찰 선택 확인] fakePoliceBots Map에 저장됨: ${this.fakePoliceBots.get(roomCode)}`);
+            return selectedBot.id;
+        } else if (mafiaBots.length === 1) {
+            // 마피아가 1명뿐이면 경찰 연기 안 함
+            console.log(`[가짜 경찰 선택 스킵] ${roomCode} 방: 마피아가 1명뿐이므로 경찰 연기를 하지 않습니다.`);
+            return null;
+        } else {
+            console.log(`[가짜 경찰 선택 실패] ${roomCode} 방: 마피아 봇이 없습니다.`);
+            return null;
+        }
+    }
+
+    // 🎭 가짜 경찰 봇인지 확인
+    isFakePoliceBot(roomCode, botId) {
+        const fakePoliceBotId = this.fakePoliceBots.get(roomCode);
+        const isFake = fakePoliceBotId === botId;
+        
+        // 💥 강력한 디버깅: 항상 전체 Map 상태 출력
+        console.log(`🚨 [가짜 경찰 확인] 방: ${roomCode}, 확인 봇: ${botId}, 가짜 경찰: ${fakePoliceBotId}, 결과: ${isFake}`);
+        console.log(`🚨 [전체 Map 상태] fakePoliceBots:`, Array.from(this.fakePoliceBots.entries()));
+        console.log(`🚨 [전체 Map 상태] fakeInvestigations:`, Array.from(this.fakeInvestigations.entries()));
+        
+        return isFake;
+    }
+
+    // 🕵️ 거짓 조사 결과 생성
+    generateFakeInvestigation(room, fakePoliceBotId) {
+        const roomCode = room.code;
+        const fakeInvestigations = this.fakeInvestigations.get(roomCode) || [];
+        
+        // 살아있는 플레이어들 목록 (자신 제외)
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== fakePoliceBotId);
+        
+        // 이미 조사한(거짓 발표한) 플레이어들 제외
+        const investigatedPlayers = new Set(fakeInvestigations.map(inv => inv.target));
+        const availableTargets = alivePlayers.filter(p => !investigatedPlayers.has(p.id));
+        
+        if (availableTargets.length === 0) {
+            console.log(`[거짓 조사] ${roomCode}: 더 이상 조사할 대상이 없습니다.`);
+            return null;
+        }
+        
+        // 전략적 타겟 선택
+        const target = this.chooseFakeInvestigationTarget(room, availableTargets, fakePoliceBotId);
+        if (!target) return null;
+        
+        // 거짓 결과 결정
+        const fakeResult = this.decideFakeInvestigationResult(room, target, fakePoliceBotId);
+        
+        // 거짓 조사 기록 생성
+        const fakeInvestigation = {
+            investigator: fakePoliceBotId,
+            target: target.id,
+            targetName: target.name,
+            result: fakeResult,
+            round: room.round,
+            timestamp: new Date(),
+            announced: false // 아직 발표되지 않음
+        };
+        
+        // 거짓 조사 히스토리에 저장
+        fakeInvestigations.push(fakeInvestigation);
+        this.fakeInvestigations.set(roomCode, fakeInvestigations);
+        
+        console.log(`[거짓 조사 생성] ${roomCode}: ${target.name} → ${fakeResult} (실제 역할: ${target.role})`);
+        return fakeInvestigation;
+    }
+
+    // 🎯 거짓 조사 대상 선택 (전략적)
+    chooseFakeInvestigationTarget(room, availableTargets, fakePoliceBotId) {
+        // 우선순위 1: 신뢰도 높은 시민들 (마피아로 몰기 좋은 대상)
+        const trustworthyCitizens = availableTargets.filter(p => 
+            p.role !== 'mafia' && (p.role === 'citizen' || p.role === 'doctor')
+        );
+        
+        // 우선순위 2: 마피아 동료들 (무고하다고 발표하기 좋은 대상)
+        const mafiaAllies = availableTargets.filter(p => p.role === 'mafia');
+        
+        // 전략 결정: 60% 확률로 시민을 마피아로 몰고, 40% 확률로 마피아를 무고하다고 발표
+        const shouldFrameCitizen = Math.random() < 0.6;
+        
+        if (shouldFrameCitizen && trustworthyCitizens.length > 0) {
+            // 시민을 마피아로 몰기 - 신뢰도 높은 시민 우선 선택
+            const target = trustworthyCitizens[Math.floor(Math.random() * trustworthyCitizens.length)];
+            console.log(`[거짓 조사 전략] 시민 ${target.name}을 마피아로 몰 예정`);
+            return target;
+        } else if (!shouldFrameCitizen && mafiaAllies.length > 0) {
+            // 마피아 동료를 무고하다고 발표
+            const target = mafiaAllies[Math.floor(Math.random() * mafiaAllies.length)];
+            console.log(`[거짓 조사 전략] 마피아 동료 ${target.name}을 무고하다고 발표할 예정`);
+            return target;
+        } else if (trustworthyCitizens.length > 0) {
+            // 마피아 동료가 없으면 시민을 대상으로
+            const target = trustworthyCitizens[Math.floor(Math.random() * trustworthyCitizens.length)];
+            console.log(`[거짓 조사 전략] 시민 ${target.name}을 마피아로 몰 예정 (대안)`);
+            return target;
+        } else {
+            // 마지막 수단: 아무나
+            const target = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+            console.log(`[거짓 조사 전략] 무작위 대상 ${target.name} 선택`);
+            return target;
+        }
+    }
+
+    // 🎲 거짓 조사 결과 결정
+    decideFakeInvestigationResult(room, target, fakePoliceBotId) {
+        if (target.role === 'mafia') {
+            // 마피아 동료는 무고하다고 거짓 발표
+            console.log(`[거짓 결과] 마피아 동료 ${target.name}을 무고하다고 거짓 발표`);
+            return 'not_mafia';
+        } else {
+            // 시민은 마피아라고 거짓 발표
+            console.log(`[거짓 결과] 시민 ${target.name}을 마피아라고 거짓 발표`);
+            return 'mafia';
+        }
+    }
+
+    // 🎭 거짓 조사 결과 가져오기
+    getFakeInvestigations(roomCode, investigatorId = null) {
+        const fakeInvestigations = this.fakeInvestigations.get(roomCode) || [];
+        
+        if (investigatorId) {
+            return fakeInvestigations.filter(inv => inv.investigator === investigatorId);
+        }
+        
+        return fakeInvestigations;
+    }
+
+    // 🎭 미발표 거짓 조사 결과 가져오기
+    getUnnouncedFakeInvestigations(roomCode, investigatorId) {
+        const fakeInvestigations = this.getFakeInvestigations(roomCode, investigatorId);
+        return fakeInvestigations.filter(inv => !inv.announced);
+    }
+
+    // 🎭 거짓 조사 결과를 발표됨으로 표시
+    markFakeInvestigationAsAnnounced(roomCode, investigatorId, targetId) {
+        const fakeInvestigations = this.fakeInvestigations.get(roomCode) || [];
+        const investigation = fakeInvestigations.find(inv => 
+            inv.investigator === investigatorId && inv.target === targetId
+        );
+        
+        if (investigation) {
+            investigation.announced = true;
+            console.log(`[거짓 조사 발표] ${investigation.targetName} 조사 결과 발표 완료`);
+        }
+    }
+
+    // 봇 성향 재설정
+    reinitializeBotPersonalities(roomCode) {
+        const room = game.rooms.get(roomCode);
+        if (!room) return;
+        
+        const personalities = ['aggressive', 'cautious', 'analytical', 'intuitive', 'balanced'];
+        
+        for (const [botId, bot] of room.bots) {
+            // 각 봇에게 고유한 성향 할당
+            const personality = personalities[Math.floor(Math.random() * personalities.length)];
+            
+            this.botPersonalities.set(botId, {
+                type: personality,
+                traits: this.generatePersonalityTraits(personality),
+                adaptability: Math.random() * 0.5 + 0.5, // 0.5~1.0 적응력
+                consistency: Math.random() * 0.4 + 0.6, // 0.6~1.0 일관성
+                smartness: Math.random() * 0.3 + 0.7, // 0.7~1.0 지능
+                chatActivity: Math.random() * 0.6 + 0.4 // 0.4~1.0 채팅 활동성
+            });
+            
+            console.log(`[성향 설정] ${bot.name}: ${personality} 성향 (지능: ${this.botPersonalities.get(botId).smartness.toFixed(2)})`);
+        }
+    }
+
+    // 성향별 특성 생성
+    generatePersonalityTraits(personality) {
+        const traits = {
+            aggressive: {
+                votingTendency: 'quick_decision',
+                trustThreshold: 0.3,
+                suspicionWeight: 1.5,
+                chatStyle: 'assertive',
+                riskTolerance: 0.8
+            },
+            cautious: {
+                votingTendency: 'careful_analysis',
+                trustThreshold: 0.7,
+                suspicionWeight: 0.8,
+                chatStyle: 'thoughtful',
+                riskTolerance: 0.3
+            },
+            analytical: {
+                votingTendency: 'evidence_based',
+                trustThreshold: 0.5,
+                suspicionWeight: 1.0,
+                chatStyle: 'logical',
+                riskTolerance: 0.5
+            },
+            intuitive: {
+                votingTendency: 'feeling_based',
+                trustThreshold: 0.6,
+                suspicionWeight: 1.2,
+                chatStyle: 'emotional',
+                riskTolerance: 0.6
+            },
+            balanced: {
+                votingTendency: 'mixed_approach',
+                trustThreshold: 0.5,
+                suspicionWeight: 1.0,
+                chatStyle: 'neutral',
+                riskTolerance: 0.5
+            }
+        };
+        
+        return traits[personality] || traits.balanced;
     }
 
     initializeRoomHistory(roomCode) {
@@ -58,6 +321,11 @@ class BotAI {
         // 플레이어 발언인 경우 개별 발언 데이터 업데이트
         if (messageData.type === 'player' && messageData.playerId) {
             this.updatePlayerStatements(roomCode, messageData.playerId, chatMessage, room);
+        }
+
+        // 🆕 봇 반응형 채팅 트리거 - 실제 플레이어 발언에만 반응
+        if (messageData.type === 'player' && room && !this.isBot(messageData.playerId, room)) {
+            this.triggerReactiveBotChats(room, chatMessage);
         }
 
         console.log(`[채팅 히스토리] 메시지 저장: ${messageData.playerName || '시스템'}: ${messageData.message}`);
@@ -245,8 +513,18 @@ class BotAI {
         return null;
     }
 
-    // 역할 주장 추출
+    // 역할 주장 추출 (자신의 역할을 주장하는 경우만)
     extractRoleClaim(message) {
+        // "나는/내가" 등 1인칭 표현이 있는 경우만 역할 주장으로 간주
+        const selfReferencePatterns = ['나는', '내가', '저는', '제가', '난', '내'];
+        const hasSelfReference = selfReferencePatterns.some(pattern => message.includes(pattern));
+        
+        if (!hasSelfReference) {
+            // 1인칭 표현이 없으면 다른 사람에 대한 언급일 가능성이 높음
+            return null;
+        }
+        
+        // 1인칭 표현이 있는 경우에만 역할 주장으로 판단
         if (message.includes('시민')) return 'citizen';
         if (message.includes('경찰')) return 'police';
         if (message.includes('의사')) return 'doctor';
@@ -258,10 +536,22 @@ class BotAI {
     // 정보 주장 추출
     extractInformationClaim(message) {
         if (message.includes('조사')) {
+            // "ㅁㅁ님이 마피아입니다" 같은 패턴에서 타겟과 결과 추출
+            let target = null;
+            let result = null;
+            
+            // 마피아 결과 패턴 감지
+            if (message.includes('마피아입니다') || message.includes('마피아예요') || message.includes('마피아였') || message.includes('마피아네요')) {
+                result = 'mafia';
+            } else if (message.includes('시민입니다') || message.includes('시민이에요') || message.includes('시민이었') || message.includes('시민이네요') || 
+                      message.includes('무고') || message.includes('시민') || message.includes('아니') || message.includes('아님')) {
+                result = 'not_mafia';
+            }
+            
             return {
                 type: 'investigation',
-                target: null, // 추후 구현
-                result: null // 추후 구현
+                target: target, // 실제 구현에서는 메시지에서 플레이어 이름 추출 필요
+                result: result
             };
         }
         if (message.includes('치료') || message.includes('보호')) {
@@ -276,12 +566,13 @@ class BotAI {
 
     // === 거짓말 탐지 및 진실 분석 시스템 ===
 
-    // 플레이어의 채팅 기반 신뢰도 계산
+    // 🔧 개선된 채팅 기반 신뢰도 계산 시스템
     calculateChatTrust(playerId, history, room) {
         const playerStatements = history.playerStatements.get(playerId);
         if (!playerStatements) return 0; // 채팅 안 한 플레이어는 중립
 
         let chatTrust = 0;
+        const playerPersonality = this.botPersonalities.get(playerId);
         
         // 1. 발언 일관성 분석 (거짓말쟁이는 모순 발언을 한다)
         chatTrust += this.analyzeStatementConsistency(playerId, playerStatements, history);
@@ -292,17 +583,23 @@ class BotAI {
         // 3. 정보 주장의 정확성 검증 (거짓 정보를 퍼뜨리는지)
         chatTrust += this.verifyInformationClaims(playerId, playerStatements, history, room);
         
-        // 4. 과도한 주장/확신 탐지 (마피아는 과도하게 확신하는 경향)
+        // 4. 과도한 주장/확신 탐지 - 완화됨
         chatTrust += this.analyzeExcessiveConfidence(playerId, playerStatements);
         
-        // 5. 방어 패턴 분석 (과도한 방어는 의심스러움)
+        // 5. 방어 패턴 분석 - 완화됨
         chatTrust += this.analyzeDefensivePatterns(playerId, playerStatements);
         
-        // 6. 타이밍과 반응 패턴 분석 (언제 말하고 어떻게 반응하는지)
-        chatTrust += this.analyzeTimingAndReactions(playerId, playerStatements, history);
+        // 6. 타이밍과 반응 패턴 분석 - 완화됨
+        chatTrust += this.analyzeTimingAndReactions(playerId, playerStatements, history, playerPersonality);
+
+        // 🆕 7. 건설적 기여도 분석 (긍정적 행동에 대한 보상)
+        chatTrust += this.analyzeConstructiveContribution(playerId, playerStatements, history);
+
+        // 🆕 8. 성향별 조정 (성향에 따라 일부 패턴은 정상적일 수 있음)
+        chatTrust = this.adjustForPersonality(chatTrust, playerPersonality);
 
         console.log(`[채팅 분석] ${playerId}: 채팅 신뢰도 ${chatTrust}점`);
-        return Math.max(-50, Math.min(50, chatTrust)); // -50 ~ +50 점 범위
+        return Math.max(-30, Math.min(30, chatTrust)); // -30 ~ +30 점 범위 (완화됨)
     }
 
     // 1. 발언 일관성 분석 (전후 발언이 모순되는지)
@@ -372,27 +669,49 @@ class BotAI {
         return alignment;
     }
 
-    // 3. 정보 주장의 정확성 검증
+    // 3. 정보 주장의 정확성 검증 - 개선됨
     verifyInformationClaims(playerId, playerStatements, history, room) {
         let accuracy = 0;
         
         // 경찰 조사 결과 주장 검증
         for (const claim of playerStatements.informationClaims) {
             if (claim.type === 'investigation') {
-                // 실제 조사 결과와 비교
-                const actualInvestigation = this.findActualInvestigation(playerId, claim, history);
-                if (actualInvestigation) {
-                    if (actualInvestigation.result === claim.result) {
-                        accuracy += 15; // 정확한 정보 제공
-                        console.log(`[정보검증] ${playerId}: 정확한 조사 정보 (+15)`);
-                    } else {
-                        accuracy -= 20; // 거짓 정보 제공
-                        console.log(`[정보검증] ${playerId}: 거짓 조사 정보 (-20)`);
+                // 🔍 실제 조사 기록 확인 (가장 중요)
+                const actualInvestigations = this.findPlayerInvestigations(playerId, history);
+                
+                if (actualInvestigations.length > 0) {
+                    // 실제로 조사를 한 경우 - 진짜 경찰일 가능성 높음
+                    accuracy += 25; // 대폭 증가 (실제 조사 기록이 최고 증거)
+                    console.log(`[정보검증] ${playerId}: 실제 조사 기록 존재 - 진짜 경찰 (+25)`);
+                    
+                    // 추가 보너스: 조사 결과를 정확히 발표했는지 확인
+                    for (const actualInv of actualInvestigations) {
+                        // 실제 조사 결과와 발표 내용이 일치하는지 확인 (간단한 검증)
+                        accuracy += 10; // 정확한 정보 발표 보너스
+                        console.log(`[정보검증] ${playerId}: 조사 결과 정확 발표 (+10)`);
                     }
                 } else {
-                    // 조사하지 않았는데 조사 결과를 알고 있다고 주장
-                    accuracy -= 25; // 불가능한 정보 주장
-                    console.log(`[정보검증] ${playerId}: 불가능한 조사 정보 (-25)`);
+                    // 실제 조사하지 않았는데 조사 정보 주장
+                    const policeClaims = playerStatements.roleClaims.filter(rc => rc.role === 'police');
+                    
+                    if (policeClaims.length > 0) {
+                        // 경찰 주장했지만 조사 기록 없음 - 의심스러움
+                        accuracy -= 5; // 완화된 페널티
+                        console.log(`[정보검증] ${playerId}: 경찰 주장했으나 조사 기록 없음 (-5)`);
+                    } else {
+                        // 경찰 아닌데 조사 정보 주장 - 거짓말 가능성
+                        accuracy -= 8; // 완화된 페널티
+                        console.log(`[정보검증] ${playerId}: 경찰 아닌데 조사 정보 주장 (-8)`);
+                    }
+                }
+                
+                // 🆕 추가 검증: 조사 정보의 구체성과 타이밍
+                if (claim.round && claim.phase) {
+                    // 적절한 타이밍에 발표한 경우 (아침 또는 토론 시간)
+                    if (claim.phase === 'morning' || claim.phase === 'discussion') {
+                        accuracy += 5; // 적절한 타이밍 보너스
+                        console.log(`[정보검증] ${playerId}: 적절한 타이밍의 정보 발표 (+5)`);
+                    }
                 }
             }
         }
@@ -400,7 +719,34 @@ class BotAI {
         return accuracy;
     }
 
-    // 4. 과도한 주장/확신 탐지
+    // 플레이어의 모든 조사 기록 찾기 (헬퍼 함수) - 개선됨
+    findPlayerInvestigations(playerId, history) {
+        const investigations = [];
+        
+        // 1. 현재 라운드에서 조사 기록 확인
+        if (history.currentRound && history.currentRound.investigations && history.currentRound.investigations.length > 0) {
+            for (const inv of history.currentRound.investigations) {
+                if (inv.investigator === playerId) {
+                    investigations.push(inv);
+                }
+            }
+        }
+        
+        // 2. 완료된 라운드들에서 조사 기록 확인
+        for (const round of history.rounds) {
+            if (round.investigations && round.investigations.length > 0) {
+                for (const inv of round.investigations) {
+                    if (inv.investigator === playerId) {
+                        investigations.push(inv);
+                    }
+                }
+            }
+        }
+        
+        return investigations;
+    }
+
+    // 4. 과도한 주장/확신 탐지 - 크게 완화됨
     analyzeExcessiveConfidence(playerId, playerStatements) {
         let confidence = 0;
         
@@ -408,72 +754,211 @@ class BotAI {
         const suspicionClaims = playerStatements.suspicionClaims.length;
         const trustClaims = playerStatements.trustClaims.length;
         const roleClaims = playerStatements.roleClaims.length;
+        const informationClaims = playerStatements.informationClaims.length;
         
-        // 너무 많은 의심/신뢰 표현 (전체 메시지 대비)
+        // 의견 표현 비율 분석 - 더욱 완화
         if (totalMessages > 0) {
             const opinionRatio = (suspicionClaims + trustClaims) / totalMessages;
-            if (opinionRatio > 0.7) { // 70% 이상이 의견 표현
-                confidence -= 8; // 과도한 의견 표현
-                console.log(`[과도한확신] ${playerId}: 과도한 의견 표현 (-8)`);
+            
+            // 🆕 정보 제공자에게는 페널티 없음
+            if (informationClaims > 0) {
+                console.log(`[과도한확신] ${playerId}: 정보 제공자 - 의견 표현 페널티 면제`);
+            } else if (opinionRatio > 0.95) { // 95% 이상만 페널티 (매우 완화)
+                confidence -= 2; // 매우 완화된 페널티
+                console.log(`[과도한확신] ${playerId}: 극도의 의견 표현 (-2)`);
             }
         }
 
-        // 너무 많은 역할 주장
-        if (roleClaims > 2) {
-            confidence -= 5; // 과도한 역할 주장
-            console.log(`[과도한확신] ${playerId}: 과도한 역할 주장 (-5)`);
+        // 역할 주장 분석 - 완화
+        if (roleClaims > 5) { // 5개 이상으로 대폭 완화
+            confidence -= 2; // 완화된 페널티
+            console.log(`[과도한확신] ${playerId}: 극도의 역할 주장 (-2)`);
+        } else if (roleClaims > 3) { // 3개 이상
+            confidence -= 1; // 경미한 페널티
+            console.log(`[과도한확신] ${playerId}: 많은 역할 주장 (-1)`);
+        }
+        
+        // 🆕 건설적 참여 보상
+        if (totalMessages >= 2 && informationClaims > 0) {
+            confidence += 3; // 정보 제공자 보상
+            console.log(`[과도한확신] ${playerId}: 정보 제공자 보상 (+3)`);
         }
 
         return confidence;
     }
 
-    // 5. 방어 패턴 분석
+    // 5. 방어 패턴 분석 - 대폭 완화됨
     analyzeDefensivePatterns(playerId, playerStatements) {
         let defense = 0;
         
         const defensiveCount = playerStatements.defensiveStatements.length;
         const totalMessages = playerStatements.totalMessages;
+        const informationClaims = playerStatements.informationClaims.length;
         
         if (totalMessages > 0) {
             const defensiveRatio = defensiveCount / totalMessages;
             
-            if (defensiveRatio > 0.4) { // 40% 이상이 방어적 발언
-                defense -= 10; // 과도한 방어
-                console.log(`[방어패턴] ${playerId}: 과도한 방어적 발언 (-10)`);
-            } else if (defensiveRatio > 0.2) { // 20% 이상이 방어적 발언
-                defense -= 5; // 약간의 방어
-                console.log(`[방어패턴] ${playerId}: 방어적 성향 (-5)`);
+            // 🆕 정보 제공자나 경찰 역할 주장자는 방어적 발언이 정당할 수 있음
+            const hasPoliceRoleClaim = playerStatements.roleClaims.some(claim => claim.role === 'police');
+            
+            if (informationClaims > 0 || hasPoliceRoleClaim) {
+                // 정보 제공자는 의심받을 때 방어할 권리가 있음
+                console.log(`[방어패턴] ${playerId}: 정보 제공자 - 방어적 발언 페널티 면제`);
+            } else if (defensiveRatio > 0.8) { // 80% 이상만 페널티 (매우 완화)
+                defense -= 3; // 대폭 완화된 페널티
+                console.log(`[방어패턴] ${playerId}: 극도의 방어적 발언 (-3)`);
+            } else if (defensiveRatio > 0.6) { // 60% 이상
+                defense -= 1; // 경미한 페널티
+                console.log(`[방어패턴] ${playerId}: 방어적 성향 (-1)`);
+            }
+            
+            // 🆕 적절한 방어는 오히려 정상적인 시민 반응일 수 있음
+            if (defensiveRatio > 0 && defensiveRatio <= 0.3 && totalMessages >= 3) {
+                defense += 1; // 적절한 방어 보상
+                console.log(`[방어패턴] ${playerId}: 적절한 방어 반응 (+1)`);
             }
         }
 
         return defense;
     }
 
-    // 6. 타이밍과 반응 패턴 분석
-    analyzeTimingAndReactions(playerId, playerStatements, history) {
+    // 6. 타이밍과 반응 패턴 분석 - 완화됨
+    analyzeTimingAndReactions(playerId, playerStatements, history, playerPersonality) {
         let timing = 0;
         
         const messageTimings = playerStatements.messageTimings;
         
-        // 토론 시간 활용 패턴
+        // 토론 시간 활용 패턴 - 완화됨
         const discussionMessages = messageTimings.filter(msg => msg.phase === 'discussion');
         if (discussionMessages.length === 0 && playerStatements.totalMessages > 0) {
-            timing -= 5; // 토론 시간에 참여하지 않음
-            console.log(`[타이밍] ${playerId}: 토론 시간 비참여 (-5)`);
+            // 성향에 따라 조정
+            if (playerPersonality && playerPersonality.traits.chatStyle === 'thoughtful') {
+                timing -= 1; // 신중한 성향은 말을 적게 할 수 있음
+                console.log(`[타이밍] ${playerId}: 신중한 성향으로 토론 참여 적음 (-1)`);
+            } else {
+                timing -= 3; // 기본 감점 완화
+                console.log(`[타이밍] ${playerId}: 토론 시간 비참여 (-3)`);
+            }
         }
 
-        // 투표 직전 발언 패턴 (마피아는 투표 직전에 의견을 바꾸는 경향)
+        // 투표 직전 발언 패턴 분석 - 완화됨
         const lastMinuteMessages = discussionMessages.filter(msg => {
-            // 토론 시간 마지막 10초 내 발언
             return msg.phase === 'discussion'; // 실제로는 시간 계산 필요
         });
         
+        const hasInformationClaims = playerStatements.informationClaims.length > 0;
+        const hasPoliceRoleClaim = playerStatements.roleClaims.some(claim => claim.role === 'police');
+        
+        // 경찰 역할 주장자가 정보 제공하는 경우는 정상적인 타이밍으로 간주
         if (lastMinuteMessages.length > discussionMessages.length * 0.5) {
-            timing -= 3; // 대부분 마지막에 발언
-            console.log(`[타이밍] ${playerId}: 마지막 순간 발언 편중 (-3)`);
+            if (hasInformationClaims && hasPoliceRoleClaim) {
+                // 경찰이 조사 결과를 발표하는 경우 - 정상적인 행동
+                console.log(`[타이밍] ${playerId}: 경찰 조사 결과 발표 - 정상 타이밍`);
+            } else if (playerPersonality && playerPersonality.traits.votingTendency === 'quick_decision') {
+                // 공격적 성향은 마지막 순간 발언이 정상적
+                timing -= 1; // 완화된 감점
+                console.log(`[타이밍] ${playerId}: 공격적 성향의 마지막 순간 발언 (-1)`);
+            } else {
+                timing -= 2; // 기본 감점 완화 (기존 -3에서 -2로)
+                console.log(`[타이밍] ${playerId}: 마지막 순간 발언 편중 (-2)`);
+            }
         }
 
         return timing;
+    }
+
+    // 🆕 7. 건설적 기여도 분석 (긍정적 행동에 대한 강화된 보상)
+    analyzeConstructiveContribution(playerId, playerStatements, history) {
+        let contribution = 0;
+        
+        // 🔍 정보 공유 행동 대폭 보상 강화
+        if (playerStatements.informationClaims.length > 0) {
+            const infoBonus = Math.min(15, playerStatements.informationClaims.length * 8); // 정보당 8점, 최대 15점
+            contribution += infoBonus;
+            console.log(`[건설적 기여] ${playerId}: 정보 제공 강화 보상 (+${infoBonus})`);
+            
+            // 🆕 조사 정보 제공 특별 보상
+            const investigationClaims = playerStatements.informationClaims.filter(ic => ic.type === 'investigation');
+            if (investigationClaims.length > 0) {
+                contribution += 10; // 조사 정보 특별 보상
+                console.log(`[건설적 기여] ${playerId}: 조사 정보 특별 보상 (+10)`);
+            }
+        }
+        
+        // 🆕 경찰 역할 주장자 보상
+        const hasPoliceRoleClaim = playerStatements.roleClaims.some(claim => claim.role === 'police');
+        if (hasPoliceRoleClaim) {
+            contribution += 8; // 경찰 주장자 보상
+            console.log(`[건설적 기여] ${playerId}: 경찰 역할 주장 (+8)`);
+        }
+        
+        // 논리적 추리 보상 강화
+        if (playerStatements.suspicionClaims.length > 0 && playerStatements.suspicionClaims.length <= 4) {
+            const reasoningBonus = Math.min(6, playerStatements.suspicionClaims.length * 2);
+            contribution += reasoningBonus;
+            console.log(`[건설적 기여] ${playerId}: 합리적 의심 표현 (+${reasoningBonus})`);
+        }
+        
+        // 균형잡힌 발언 보상
+        const totalStatements = playerStatements.suspicionClaims.length + playerStatements.trustClaims.length;
+        if (totalStatements > 0 && totalStatements <= playerStatements.totalMessages * 0.6) { // 60%로 완화
+            contribution += 3; // 보상 증가
+            console.log(`[건설적 기여] ${playerId}: 균형잡힌 발언 (+3)`);
+        }
+        
+        // 적극적 참여 보상 강화
+        if (playerStatements.totalMessages >= 2) { // 기준 완화
+            const participationBonus = Math.min(4, playerStatements.totalMessages); // 메시지당 1점, 최대 4점
+            contribution += participationBonus;
+            console.log(`[건설적 기여] ${playerId}: 적극적 참여 (+${participationBonus})`);
+        }
+        
+        // 🆕 신뢰 표현 보상 (마피아는 주로 의심만 함)
+        if (playerStatements.trustClaims.length > 0) {
+            contribution += 2; // 신뢰 표현 보상
+            console.log(`[건설적 기여] ${playerId}: 신뢰 표현 (+2)`);
+        }
+        
+        return contribution;
+    }
+
+    // 🆕 8. 성향별 조정 (성향에 따라 일부 패턴은 정상적일 수 있음)
+    adjustForPersonality(chatTrust, playerPersonality) {
+        if (!playerPersonality) return chatTrust;
+        
+        const personality = playerPersonality.type;
+        const traits = playerPersonality.traits;
+        
+        // 성향별 조정
+        switch (personality) {
+            case 'aggressive':
+                // 공격적 성향은 빠른 의사결정과 적극적 발언이 정상
+                if (chatTrust < 0) {
+                    chatTrust = Math.max(chatTrust * 0.7, -20); // 부정적 점수 완화
+                }
+                break;
+            case 'cautious':
+                // 신중한 성향은 방어적 발언과 적은 발언이 정상
+                if (chatTrust < 0) {
+                    chatTrust = Math.max(chatTrust * 0.8, -15); // 부정적 점수 완화
+                }
+                break;
+            case 'analytical':
+                // 분석적 성향은 정보 제공과 논리적 추리가 정상
+                if (chatTrust > 0) {
+                    chatTrust = Math.min(chatTrust * 1.2, 25); // 긍정적 점수 증가
+                }
+                break;
+            case 'intuitive':
+                // 직관적 성향은 감정적 발언과 빠른 판단이 정상
+                chatTrust = chatTrust * 0.9; // 전반적으로 완화
+                break;
+            case 'balanced':
+                // 균형잡힌 성향은 현재 그대로
+                break;
+        }
+        
+        return Math.round(chatTrust);
     }
 
     // 실제 조사 결과 찾기
@@ -592,25 +1077,41 @@ class BotAI {
         let trust = 50; // 기본 신뢰도
         
         // 1. 밤 생존 패턴 분석 (마피아는 밤에 죽지 않는 경향)
-        trust += this.analyzeNightSurvival(playerId, history);
+        const nightSurvival = this.analyzeNightSurvival(playerId, history);
+        trust += (isNaN(nightSurvival) ? 0 : nightSurvival);
         
         // 2. 투표 패턴 분석 (밤에 죽은 플레이어와의 관계)
-        trust += this.analyzeVotingPatterns(playerId, history);
+        const votingPatterns = this.analyzeVotingPatterns(playerId, history);
+        trust += (isNaN(votingPatterns) ? 0 : votingPatterns);
         
         // 3. 경찰 조사 결과 활용 (자신이 경찰인 경우에만)
-        trust += this.analyzeInvestigationResults(playerId, history);
+        const investigationResults = this.analyzeInvestigationResults(playerId, history);
+        trust += (isNaN(investigationResults) ? 0 : investigationResults);
         
         // 4. 공격 대상 패턴 분석 (누가 밤에 죽었는지)
-        trust += this.analyzeAttackPatterns(playerId, history);
+        const attackPatterns = this.analyzeAttackPatterns(playerId, history);
+        trust += (isNaN(attackPatterns) ? 0 : attackPatterns);
         
         // 5. 📢 채팅 분석 (거짓말 탐지 및 진실 분석)
+        let chatTrust = 0;
         if (room) {
-            const chatTrust = this.calculateChatTrust(playerId, history, room);
+            chatTrust = this.calculateChatTrust(playerId, history, room);
+            chatTrust = isNaN(chatTrust) ? 0 : chatTrust;
             trust += chatTrust;
-            console.log(`[종합 신뢰도] ${playerId}: 기본 ${trust - chatTrust}점 + 채팅 ${chatTrust}점 = 총 ${trust}점`);
         }
         
-        return Math.max(0, Math.min(100, trust));
+        // 최종 안전성 확인
+        if (isNaN(trust) || trust === null || trust === undefined) {
+            trust = 50;
+        }
+        
+        const baseTrust = Math.round(trust - chatTrust);
+        const finalChatTrust = Math.round(chatTrust);
+        const finalTrust = Math.round(trust);
+        
+        console.log(`[종합 신뢰도] ${playerId}: 기본 ${baseTrust}점 + 채팅 ${finalChatTrust}점 = 총 ${finalTrust}점`);
+        
+        return Math.max(0, Math.min(100, Math.round(trust)));
     }
     
     // 밤 생존 패턴 분석
@@ -808,55 +1309,157 @@ class BotAI {
     // 게임 리셋 시 히스토리 초기화
     resetGameHistory(roomCode) {
         this.gameHistory.delete(roomCode);
+        
+        // 봇 지능 시스템도 함께 초기화
+        this.resetBotIntelligence(roomCode);
     }
 
     // === 역할별 전략 로직 ===
 
-    // 마피아 봇 전략
+    // 마피아 봇 전략 (개선됨)
     chooseMafiaTarget(room, mafiaBot) {
-        const analysis = this.analyzeGameState(room);
-        if (!analysis) return this.chooseRandomTarget(room, mafiaBot, 'mafia');
+        console.log(`[마피아 AI] ${mafiaBot.name}: 고급 추리 시작`);
+        
+        // 고급 추리 시스템 사용
+        const analysis = this.performAdvancedDeduction(room, mafiaBot);
+        if (analysis && analysis.playerProfiles.size > 0) {
+            const smartTarget = this.chooseSmartMafiaTarget(room, mafiaBot, analysis);
+            if (smartTarget) {
+                return smartTarget;
+            }
+        }
+        
+        // 기존 로직 fallback
+        const basicAnalysis = this.analyzeGameState(room);
+        if (!basicAnalysis) return this.chooseRandomTarget(room, mafiaBot, 'mafia');
 
-        console.log(`[마피아 AI] ${mafiaBot.name}: 전략적 대상 선택 시작`);
+        console.log(`[마피아 AI] ${mafiaBot.name}: 기본 전략으로 전환`);
+
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== mafiaBot.id);
 
         // 우선순위 1: 위험한 역할 (경찰, 의사로 추정되는 플레이어)
-        const threats = analysis.threats.filter(t => 
-            t.player.id !== mafiaBot.id && 
-            this.getPlayerRole(room, t.player.id) !== 'mafia'
-        );
-
-        if (threats.length > 0) {
-            const target = threats[0].player;
-            console.log(`[마피아 AI] ${mafiaBot.name}: 위험 인물 ${target.name} 선택 (의심도: ${threats[0].suspicion})`);
-            return target;
+        if (basicAnalysis.threats && basicAnalysis.threats.length > 0) {
+            const threats = basicAnalysis.threats.filter(t => t.player.id !== mafiaBot.id);
+            
+            if (threats.length > 0) {
+                const target = threats[0].player;
+                console.log(`[마피아 AI] ${mafiaBot.name}: 위험 인물 ${target.name} 선택 (의심도: ${threats[0].suspicion})`);
+                return target;
+            }
         }
 
         // 우선순위 2: 신뢰도가 높은 플레이어 (시민 진영으로 보이는 플레이어)
-        const trustedPlayers = analysis.trustedPlayers.filter(p => 
-            p.player.id !== mafiaBot.id && 
-            this.getPlayerRole(room, p.player.id) !== 'mafia'
-        );
+        if (basicAnalysis.trustedPlayers && basicAnalysis.trustedPlayers.length > 0) {
+            const trustedPlayers = basicAnalysis.trustedPlayers.filter(p => p.player.id !== mafiaBot.id);
 
-        if (trustedPlayers.length > 0) {
-            const target = trustedPlayers[0].player;
-            console.log(`[마피아 AI] ${mafiaBot.name}: 신뢰받는 플레이어 ${target.name} 선택 (신뢰도: ${trustedPlayers[0].trust})`);
-            return target;
+            if (trustedPlayers.length > 0) {
+                const target = trustedPlayers[0].player;
+                console.log(`[마피아 AI] ${mafiaBot.name}: 신뢰받는 플레이어 ${target.name} 선택 (신뢰도: ${trustedPlayers[0].trust})`);
+                return target;
+            }
         }
 
-        // 우선순위 3: 무작위 선택 (마피아 제외)
+        // 우선순위 3: 무작위 선택
         console.log(`[마피아 AI] ${mafiaBot.name}: 전략적 대상 없음, 무작위 선택`);
         return this.chooseRandomTarget(room, mafiaBot, 'mafia');
     }
 
-    // 의사 봇 전략
-    chooseDoctorTarget(room, doctorBot) {
-        const analysis = this.analyzeGameState(room);
-        if (!analysis) return this.chooseRandomTarget(room, doctorBot, 'doctor');
+    // 스마트 마피아 타겟 선택
+    chooseSmartMafiaTarget(room, mafiaBot, analysis) {
+        const candidates = [];
+        
+        // 모든 플레이어 프로필 분석
+        for (const [playerId, profile] of analysis.playerProfiles) {
+            if (playerId === mafiaBot.id) continue;
+            
+            // 🚨 **핵심**: 마피아 팀원 제외 (게임 규칙상 마피아는 서로를 공격하면 안됨)
+            const player = room.players.get(playerId) || room.bots.get(playerId);
+            if (player && player.role === 'mafia') {
+                console.log(`[마피아 팀원 제외] ${mafiaBot.name}: ${player.name}은 마피아 동료이므로 공격 대상에서 제외`);
+                continue;
+            }
+            
+            let priority = 0;
+            const reasons = [];
+            
+            // 우선순위 1: 경찰 (최고 우선순위)
+            if (profile.suspectedRole === 'police') {
+                priority += 100;
+                reasons.push('경찰 역할 추정');
+            }
+            
+            // 우선순위 2: 의사 (두 번째 우선순위)
+            if (profile.suspectedRole === 'doctor') {
+                priority += 90;
+                reasons.push('의사 역할 추정');
+            }
+            
+            // 우선순위 3: 신뢰도 높은 시민 (영향력 있는 플레이어)
+            if (profile.trustLevel > 70) {
+                priority += 70;
+                reasons.push('높은 신뢰도');
+            }
+            
+            // 우선순위 4: 추리 능력이 뛰어난 플레이어
+            if (profile.keyTraits.includes('정보 제공') || profile.keyTraits.includes('논리적 추리')) {
+                priority += 60;
+                reasons.push('추리 능력 위험');
+            }
+            
+            // 우선순위 5: 마피아 의심을 받지 않는 플레이어
+            if (profile.mafiaLikelihood < 20) {
+                priority += 50;
+                reasons.push('마피아 의심 없음');
+            }
+            
+            // 감점 요소: 이미 의심받는 플레이어는 우선순위 낮음
+            if (profile.mafiaLikelihood > 60) {
+                priority -= 30;
+                reasons.push('이미 의심받음');
+            }
+            
+            if (priority > 0) {
+                candidates.push({
+                    player: { id: playerId, name: profile.playerName },
+                    priority: priority,
+                    reasons: reasons,
+                    profile: profile
+                });
+            }
+        }
+        
+        if (candidates.length === 0) return null;
+        
+        // 우선순위 정렬
+        candidates.sort((a, b) => b.priority - a.priority);
+        
+        const topCandidate = candidates[0];
+        console.log(`[스마트 마피아 선택] ${mafiaBot.name}: ${topCandidate.player.name} 선택 (우선순위: ${topCandidate.priority}, 이유: ${topCandidate.reasons.join(', ')})`);
+        
+        return topCandidate.player;
+    }
 
-        console.log(`[의사 AI] ${doctorBot.name}: 전략적 보호 대상 선택 시작`);
+    // 의사 봇 전략 (개선됨)
+    chooseDoctorTarget(room, doctorBot) {
+        console.log(`[의사 AI] ${doctorBot.name}: 고급 추리 시작`);
+        
+        // 고급 추리 시스템 사용
+        const analysis = this.performAdvancedDeduction(room, doctorBot);
+        if (analysis && analysis.playerProfiles.size > 0) {
+            const smartTarget = this.chooseSmartDoctorTarget(room, doctorBot, analysis);
+            if (smartTarget) {
+                return smartTarget;
+            }
+        }
+        
+        // 기존 로직 fallback
+        const basicAnalysis = this.analyzeGameState(room);
+        if (!basicAnalysis) return this.chooseRandomTarget(room, doctorBot, 'doctor');
+
+        console.log(`[의사 AI] ${doctorBot.name}: 기본 전략으로 전환`);
 
         // 우선순위 1: 보호 우선순위가 높은 플레이어 (자신 제외)
-        const protectionTargets = analysis.protectionTargets.filter(t => t.player.id !== doctorBot.id);
+        const protectionTargets = basicAnalysis.protectionTargets.filter(t => t.player.id !== doctorBot.id);
         if (protectionTargets.length > 0) {
             const target = protectionTargets[0].player;
             console.log(`[의사 AI] ${doctorBot.name}: 보호 우선순위 플레이어 ${target.name} 선택 (신뢰도: ${protectionTargets[0].trust})`);
@@ -864,47 +1467,113 @@ class BotAI {
         }
 
         // 우선순위 2: 신뢰도가 높은 플레이어 보호 (자신 제외)
-        const trustedPlayers = analysis.trustedPlayers.filter(p => p.player.id !== doctorBot.id);
+        const trustedPlayers = basicAnalysis.trustedPlayers.filter(p => p.player.id !== doctorBot.id);
         if (trustedPlayers.length > 0) {
             const target = trustedPlayers[0].player;
             console.log(`[의사 AI] ${doctorBot.name}: 신뢰받는 플레이어 ${target.name} 보호 선택 (신뢰도: ${trustedPlayers[0].trust})`);
             return target;
         }
 
-        // 우선순위 3: 위험에 노출된 플레이어 보호 (마피아 공격 대상 예상)
-        const vulnerablePlayers = analysis.alivePlayers.filter(p => 
-            p.id !== doctorBot.id && 
-            this.getPlayerRole(room, p.id) !== 'mafia'
-        );
-        
-        if (vulnerablePlayers.length > 0) {
-            // 경찰이나 의심도가 낮은 플레이어 우선 보호
-            const priorityTargets = vulnerablePlayers.filter(p => 
-                p.role === 'police' || 
-                this.calculateSuspicion(p.id, this.gameHistory.get(room.code) || { rounds: [] }) < 30
-            );
-            
-            if (priorityTargets.length > 0) {
-                const target = priorityTargets[0];
-                console.log(`[의사 AI] ${doctorBot.name}: 위험 노출 플레이어 ${target.name} 보호 선택`);
-                return target;
-            }
-        }
-
-        // 우선순위 4: 무작위 선택 (자신 제외)
+        // 우선순위 3: 무작위 선택
         console.log(`[의사 AI] ${doctorBot.name}: 전략적 대상 없음, 무작위 선택`);
         return this.chooseRandomTarget(room, doctorBot, 'doctor');
     }
 
-    // 경찰 봇 전략
-    choosePoliceTarget(room, policeBot) {
-        const analysis = this.analyzeGameState(room);
-        if (!analysis) return this.chooseRandomTarget(room, policeBot, 'police');
+    // 스마트 의사 타겟 선택
+    chooseSmartDoctorTarget(room, doctorBot, analysis) {
+        const candidates = [];
+        
+        // 모든 플레이어 프로필 분석
+        for (const [playerId, profile] of analysis.playerProfiles) {
+            if (playerId === doctorBot.id) continue;
+            
+            let priority = 0;
+            const reasons = [];
+            
+            // 우선순위 1: 경찰 (최고 우선순위)
+            if (profile.suspectedRole === 'police') {
+                priority += 100;
+                reasons.push('경찰 보호');
+            }
+            
+            // 우선순위 2: 다른 의사 (두 번째 우선순위)
+            if (profile.suspectedRole === 'doctor') {
+                priority += 90;
+                reasons.push('의사 보호');
+            }
+            
+            // 우선순위 3: 신뢰도 높은 시민 (마피아 타겟이 될 가능성)
+            if (profile.trustLevel > 70) {
+                priority += 80;
+                reasons.push('마피아 타겟 예상');
+            }
+            
+            // 우선순위 4: 추리 능력이 뛰어난 플레이어
+            if (profile.keyTraits.includes('정보 제공') || profile.keyTraits.includes('논리적 추리')) {
+                priority += 70;
+                reasons.push('추리 능력 보호');
+            }
+            
+            // 우선순위 5: 마피아 의심을 받지 않는 플레이어
+            if (profile.mafiaLikelihood < 20) {
+                priority += 60;
+                reasons.push('신뢰할 만한 시민');
+            }
+            
+            // 감점 요소: 마피아 의심자는 보호 안 함
+            if (profile.mafiaLikelihood > 60) {
+                priority = 0;
+                reasons.push('마피아 의심자');
+            }
+            
+            // 감점 요소: 이미 의심받는 플레이어는 우선순위 낮음
+            if (profile.mafiaLikelihood > 40) {
+                priority -= 20;
+                reasons.push('의심받는 플레이어');
+            }
+            
+            if (priority > 0) {
+                candidates.push({
+                    player: { id: playerId, name: profile.playerName },
+                    priority: priority,
+                    reasons: reasons,
+                    profile: profile
+                });
+            }
+        }
+        
+        if (candidates.length === 0) return null;
+        
+        // 우선순위 정렬
+        candidates.sort((a, b) => b.priority - a.priority);
+        
+        const topCandidate = candidates[0];
+        console.log(`[스마트 의사 선택] ${doctorBot.name}: ${topCandidate.player.name} 선택 (우선순위: ${topCandidate.priority}, 이유: ${topCandidate.reasons.join(', ')})`);
+        
+        return topCandidate.player;
+    }
 
-        console.log(`[경찰 AI] ${policeBot.name}: 전략적 수사 대상 선택 시작`);
+    // 경찰 봇 전략 (개선됨)
+    choosePoliceTarget(room, policeBot) {
+        console.log(`[경찰 AI] ${policeBot.name}: 고급 추리 시작`);
+        
+        // 고급 추리 시스템 사용
+        const analysis = this.performAdvancedDeduction(room, policeBot);
+        if (analysis && analysis.playerProfiles.size > 0) {
+            const smartTarget = this.chooseSmartPoliceTarget(room, policeBot, analysis);
+            if (smartTarget) {
+                return smartTarget;
+            }
+        }
+        
+        // 기존 로직 fallback
+        const basicAnalysis = this.analyzeGameState(room);
+        if (!basicAnalysis) return this.chooseRandomTarget(room, policeBot, 'police');
+
+        console.log(`[경찰 AI] ${policeBot.name}: 기본 전략으로 전환`);
 
         // 우선순위 1: 의심도가 높은 플레이어
-        const suspiciousPlayers = analysis.suspiciousPlayers.filter(p => 
+        const suspiciousPlayers = basicAnalysis.suspiciousPlayers.filter(p => 
             p.player.id !== policeBot.id && p.suspicion > 30
         );
 
@@ -928,7 +1597,7 @@ class BotAI {
             }
         }
 
-        const uninvestigatedPlayers = analysis.alivePlayers.filter(p => 
+        const uninvestigatedPlayers = basicAnalysis.alivePlayers.filter(p => 
             p.id !== policeBot.id && !investigatedPlayers.has(p.id)
         );
 
@@ -943,16 +1612,116 @@ class BotAI {
         return this.chooseRandomTarget(room, policeBot, 'police');
     }
 
-    // 시민 봇 투표 전략
+    // 스마트 경찰 타겟 선택
+    chooseSmartPoliceTarget(room, policeBot, analysis) {
+        const candidates = [];
+        const history = this.gameHistory.get(room.code);
+        
+        // 이미 조사한 플레이어 목록
+        const investigatedPlayers = new Set();
+        if (history) {
+            for (const round of history.rounds) {
+                for (const investigation of round.investigations) {
+                    if (investigation.investigator === policeBot.id) {
+                        investigatedPlayers.add(investigation.target);
+                    }
+                }
+            }
+        }
+        
+        // 모든 플레이어 프로필 분석
+        for (const [playerId, profile] of analysis.playerProfiles) {
+            if (playerId === policeBot.id) continue;
+            if (investigatedPlayers.has(playerId)) continue; // 이미 조사함
+            
+            let priority = 0;
+            const reasons = [];
+            
+            // 우선순위 1: 마피아 가능성 높은 플레이어
+            if (profile.mafiaLikelihood > 70) {
+                priority += 100;
+                reasons.push('마피아 가능성 높음');
+            } else if (profile.mafiaLikelihood > 50) {
+                priority += 80;
+                reasons.push('마피아 가능성 있음');
+            }
+            
+            // 우선순위 2: 의심스러운 행동 패턴
+            if (profile.keyTraits.includes('모순 발언')) {
+                priority += 70;
+                reasons.push('모순 발언');
+            }
+            
+            if (profile.keyTraits.includes('거짓 정보')) {
+                priority += 60;
+                reasons.push('거짓 정보 제공');
+            }
+            
+            // 우선순위 3: 역할 불명확한 플레이어
+            if (profile.suspectedRole === 'unknown') {
+                priority += 40;
+                reasons.push('역할 불명확');
+            }
+            
+            // 우선순위 4: 생존 패턴 의심
+            if (profile.keyTraits.includes('오래 생존')) {
+                priority += 30;
+                reasons.push('생존 패턴 의심');
+            }
+            
+            // 감점 요소: 이미 신뢰받는 플레이어는 우선순위 낮음
+            if (profile.trustLevel > 70) {
+                priority -= 20;
+                reasons.push('신뢰받는 플레이어');
+            }
+            
+            if (priority > 0) {
+                candidates.push({
+                    player: { id: playerId, name: profile.playerName },
+                    priority: priority,
+                    reasons: reasons,
+                    profile: profile
+                });
+            }
+        }
+        
+        if (candidates.length === 0) return null;
+        
+        // 우선순위 정렬
+        candidates.sort((a, b) => b.priority - a.priority);
+        
+        const topCandidate = candidates[0];
+        console.log(`[스마트 경찰 선택] ${policeBot.name}: ${topCandidate.player.name} 선택 (우선순위: ${topCandidate.priority}, 이유: ${topCandidate.reasons.join(', ')})`);
+        
+        return topCandidate.player;
+    }
+
+    // 시민 봇 전략
     chooseCitizenVoteTarget(room, citizenBot) {
         const analysis = this.analyzeGameState(room);
         if (!analysis) return this.chooseRandomTarget(room, citizenBot, 'citizen');
 
         console.log(`[시민 AI] ${citizenBot.name}: 전략적 투표 대상 선택 시작`);
+        
+        const history = this.gameHistory.get(room.code);
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== citizenBot.id);
 
-        // 우선순위 1: 의심도가 높은 플레이어
+        // 우선순위 1: 채팅 분석에서 역할 주장 모순이나 정보 검증 실패한 플레이어
+        if (history && history.playerStatements) {
+            for (const player of alivePlayers) {
+                const playerData = history.playerStatements.get(player.id);
+                if (playerData && playerData.contradictions && Array.isArray(playerData.contradictions)) {
+                    if (playerData.contradictions.length > 0) {
+                        console.log(`[시민 AI] ${citizenBot.name}: 모순 발견 플레이어 ${player.name} 투표 선택 (모순: ${playerData.contradictions.length}개)`);
+                        return player;
+                    }
+                }
+            }
+        }
+
+        // 우선순위 2: 의심도가 높은 플레이어 (임계값 낮춤)
         const suspiciousPlayers = analysis.suspiciousPlayers.filter(p => 
-            p.player.id !== citizenBot.id && p.suspicion > 40
+            p.player.id !== citizenBot.id && p.suspicion > 25
         );
 
         if (suspiciousPlayers.length > 0) {
@@ -961,29 +1730,107 @@ class BotAI {
             return target;
         }
 
-        // 우선순위 2: 무작위 선택 (자신 제외)
+        // 우선순위 3: 신뢰도가 낮은 플레이어
+        const lowTrustPlayers = analysis.trustedPlayers.filter(p => 
+            p.player.id !== citizenBot.id && p.trust < 40
+        ).sort((a, b) => a.trust - b.trust);
+
+        if (lowTrustPlayers.length > 0) {
+            const target = lowTrustPlayers[0].player;
+            console.log(`[시민 AI] ${citizenBot.name}: 신뢰도 낮은 플레이어 ${target.name} 투표 선택 (신뢰도: ${lowTrustPlayers[0].trust})`);
+            return target;
+        }
+
+        // 우선순위 4: 무작위 선택 (자신 제외)
         console.log(`[시민 AI] ${citizenBot.name}: 전략적 대상 없음, 무작위 선택`);
         return this.chooseRandomTarget(room, citizenBot, 'citizen');
     }
 
-    // 마피아 봇 투표 전략
+    // 마피아 봇 투표 전략 (개선됨)
     chooseMafiaVoteTarget(room, mafiaBot) {
+        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 고급 추리 시작`);
+        
+        // 🚨 **핵심**: 마피아 동료 보호 시스템
+        const allPlayers = [...room.players.values(), ...room.bots.values()];
+        const mafiaMembers = allPlayers.filter(p => p.role === 'mafia' && p.alive);
+        console.log(`[마피아 동료 보호] ${mafiaBot.name}: 마피아 동료 ${mafiaMembers.length}명 보호`);
+        
+        // 고급 추리 시스템 사용
+        const smartChoice = this.makeSmartVoteDecision(room, mafiaBot);
+        if (smartChoice) {
+            return smartChoice;
+        }
+
+        // 기존 로직 fallback
         const analysis = this.analyzeGameState(room);
         if (!analysis) return this.chooseRandomTarget(room, mafiaBot, 'mafia');
 
-        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 전략적 투표 대상 선택 시작`);
+        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 기본 전략으로 전환`);
+        
+        const history = this.gameHistory.get(room.code);
+        let alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== mafiaBot.id);
 
-        // 우선순위 1: 마피아가 아닌 플레이어 중 의심도가 낮은 플레이어 (시민 진영 보호)
-        const nonMafiaPlayers = analysis.alivePlayers.filter(p => 
-            p.id !== mafiaBot.id && 
-            this.getPlayerRole(room, p.id) !== 'mafia'
-        );
+        // 🚨 **핵심**: 마피아 동료들을 투표 후보에서 제외
+        alivePlayers = alivePlayers.filter(p => p.role !== 'mafia');
+        console.log(`[마피아 동료 제외] ${mafiaBot.name}: 마피아 동료들을 투표 후보에서 제외`);
 
-        if (nonMafiaPlayers.length > 0) {
-            // 의심도가 낮은 순서로 정렬하여 무고한 시민을 투표 대상으로 만들기
-            const suspicions = nonMafiaPlayers.map(p => ({
+        // 우선순위 1: 역할 주장자 (경찰, 의사 주장) 제거
+        if (history && history.playerStatements) {
+            const roleClaimTargets = [];
+            
+            for (const player of alivePlayers) {
+                const playerData = history.playerStatements.get(player.id);
+                if (playerData && playerData.roleClaims) {
+                    const dangerousClaims = playerData.roleClaims.filter(claim => 
+                        claim.role === 'police' || claim.role === 'doctor'
+                    );
+                    if (dangerousClaims.length > 0) {
+                        roleClaimTargets.push({
+                            player: player,
+                            claimedRole: dangerousClaims[0].role,
+                            claimCount: dangerousClaims.length
+                        });
+                    }
+                }
+            }
+
+            if (roleClaimTargets.length > 0) {
+                // 경찰 주장자를 우선적으로 타겟
+                const policeClaims = roleClaimTargets.filter(t => t.claimedRole === 'police');
+                if (policeClaims.length > 0) {
+                    const target = policeClaims[0].player;
+                    console.log(`[마피아 투표 AI] ${mafiaBot.name}: 경찰 주장자 ${target.name} 투표 선택`);
+                    return target;
+                }
+
+                // 의사 주장자 타겟
+                const doctorClaims = roleClaimTargets.filter(t => t.claimedRole === 'doctor');
+                if (doctorClaims.length > 0) {
+                    const target = doctorClaims[0].player;
+                    console.log(`[마피아 투표 AI] ${mafiaBot.name}: 의사 주장자 ${target.name} 투표 선택`);
+                    return target;
+                }
+            }
+        }
+
+        // 우선순위 2: 신뢰도가 높은 플레이어 (영향력 있는 시민 제거)
+        if (analysis.trustedPlayers && analysis.trustedPlayers.length > 0) {
+            const trustedTargets = analysis.trustedPlayers.filter(p => 
+                p.player.id !== mafiaBot.id && p.trust > 60 && p.player.role !== 'mafia'
+            );
+
+            if (trustedTargets.length > 0) {
+                const target = trustedTargets[0].player;
+                console.log(`[마피아 투표 AI] ${mafiaBot.name}: 신뢰받는 시민 ${target.name} 투표 선택 (신뢰도: ${trustedTargets[0].trust})`);
+                return target;
+            }
+        }
+
+        // 우선순위 3: 의심도가 낮은 무고한 플레이어 (쉽게 제거 가능)
+        if (alivePlayers.length > 0) {
+            const suspicions = alivePlayers.map(p => ({
                 player: p,
-                suspicion: this.calculateSuspicion(p.id, this.gameHistory.get(room.code) || { rounds: [] })
+                suspicion: this.calculateSuspicion(p.id, history || { rounds: [] })
             })).sort((a, b) => a.suspicion - b.suspicion);
 
             const target = suspicions[0].player;
@@ -991,7 +1838,7 @@ class BotAI {
             return target;
         }
 
-        // 우선순위 2: 무작위 선택 (마피아 제외)
+        // 우선순위 4: 무작위 선택
         console.log(`[마피아 투표 AI] ${mafiaBot.name}: 전략적 대상 없음, 무작위 선택`);
         return this.chooseRandomTarget(room, mafiaBot, 'mafia');
     }
@@ -1003,44 +1850,111 @@ class BotAI {
 
         console.log(`[마법사 AI] ${wizardBot.name}: 전략적 대상 선택 시작`);
 
-        // 우선순위 1: 마피아 감지 - 마피아로 전환하여 승리 가능성 높이기
-        const suspiciousMafia = analysis.alivePlayers.filter(p => 
-            p.id !== wizardBot.id && 
-            this.getPlayerRole(room, p.id) === 'mafia'
-        );
-
-        if (suspiciousMafia.length > 0) {
-            const target = suspiciousMafia[0];
-            console.log(`[마법사 AI] ${wizardBot.name}: 마피아 ${target.name}과 직업 교환 선택`);
-            return target;
+        // 30% 확률로 능력 사용하지 않음 (너무 자주 사용하면 의심받음)
+        if (Math.random() < 0.3) {
+            console.log(`[마법사 AI] ${wizardBot.name}: 능력 사용하지 않음 (30% 확률)`);
+            return null;
         }
 
-        // 우선순위 2: 경찰 - 경찰이 되어 수사 정보 확보
-        const policeTargets = analysis.alivePlayers.filter(p => 
-            p.id !== wizardBot.id && 
-            this.getPlayerRole(room, p.id) === 'police'
-        );
+        const history = this.gameHistory.get(room.code);
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== wizardBot.id);
+        const aliveCount = alivePlayers.length;
 
-        if (policeTargets.length > 0) {
-            const target = policeTargets[0];
-            console.log(`[마법사 AI] ${wizardBot.name}: 경찰 ${target.name}과 직업 교환 선택`);
-            return target;
+        // 게임 상황에 따른 전략 선택
+        const isEarlyGame = room.round <= 2;
+        const isLateGame = aliveCount <= 4;
+
+        console.log(`[마법사 AI] ${wizardBot.name}: 게임 상황 분석 - 라운드: ${room.round}, 생존자: ${aliveCount}명, 초반: ${isEarlyGame}, 후반: ${isLateGame}`);
+
+        // 전략 1: 후반전에서는 마피아 역할 노리기 (승리 조건 유리)
+        if (isLateGame && analysis.suspiciousPlayers && analysis.suspiciousPlayers.length > 0) {
+            const highSuspicionTargets = analysis.suspiciousPlayers.filter(p => 
+                p.player.id !== wizardBot.id && p.suspicion > 70
+            );
+            
+            if (highSuspicionTargets.length > 0) {
+                const target = highSuspicionTargets[0].player;
+                console.log(`[마법사 AI] ${wizardBot.name}: 후반전 마피아 의심 플레이어 ${target.name} 타겟 (의심도: ${highSuspicionTargets[0].suspicion})`);
+                return target;
+            }
         }
 
-        // 우선순위 3: 의사 - 치료 능력 확보
-        const doctorTargets = analysis.alivePlayers.filter(p => 
-            p.id !== wizardBot.id && 
-            this.getPlayerRole(room, p.id) === 'doctor'
-        );
+        // 전략 2: 경찰/의사 역할 주장자 우선 타겟 (특수 능력 획득)
+        if (history && history.playerStatements) {
+            const roleClaimTargets = [];
+            
+            for (const player of alivePlayers) {
+                const playerData = history.playerStatements.get(player.id);
+                if (playerData && playerData.roleClaims) {
+                    const specialRoleClaims = playerData.roleClaims.filter(claim => 
+                        claim.role === 'police' || claim.role === 'doctor'
+                    );
+                    if (specialRoleClaims.length > 0) {
+                        roleClaimTargets.push({
+                            player: player,
+                            claimedRole: specialRoleClaims[0].role,
+                            claimCount: specialRoleClaims.length
+                        });
+                    }
+                }
+            }
 
-        if (doctorTargets.length > 0) {
-            const target = doctorTargets[0];
-            console.log(`[마법사 AI] ${wizardBot.name}: 의사 ${target.name}과 직업 교환 선택`);
-            return target;
+            if (roleClaimTargets.length > 0) {
+                // 경찰 주장자를 우선적으로 타겟
+                const policeClaims = roleClaimTargets.filter(t => t.claimedRole === 'police');
+                if (policeClaims.length > 0) {
+                    const target = policeClaims[0].player;
+                    console.log(`[마법사 AI] ${wizardBot.name}: 경찰 주장자 ${target.name} 타겟 (조사 능력 획득 목적)`);
+                    return target;
+                }
+
+                // 의사 주장자 타겟
+                const doctorClaims = roleClaimTargets.filter(t => t.claimedRole === 'doctor');
+                if (doctorClaims.length > 0) {
+                    const target = doctorClaims[0].player;
+                    console.log(`[마법사 AI] ${wizardBot.name}: 의사 주장자 ${target.name} 타겟 (치료 능력 획득 목적)`);
+                    return target;
+                }
+            }
         }
 
-        // 우선순위 4: 능력 사용 안 함 (시민으로 남기)
-        console.log(`[마법사 AI] ${wizardBot.name}: 능력 사용하지 않음`);
+        // 전략 3: 초반에는 신뢰도 높은 플레이어 타겟 (영향력 획득)
+        if (isEarlyGame && analysis.trustedPlayers && analysis.trustedPlayers.length > 0) {
+            const highTrustTargets = analysis.trustedPlayers.filter(p => 
+                p.player.id !== wizardBot.id && p.trust > 65
+            );
+            
+            if (highTrustTargets.length > 0) {
+                const target = highTrustTargets[0].player;
+                console.log(`[마법사 AI] ${wizardBot.name}: 초반 신뢰받는 플레이어 ${target.name} 타겟 (영향력 획득, 신뢰도: ${highTrustTargets[0].trust})`);
+                return target;
+            }
+        }
+
+        // 전략 4: 중간 의심도 플레이어 타겟 (안전한 선택)
+        if (analysis.suspiciousPlayers && analysis.suspiciousPlayers.length > 0) {
+            const moderateSuspicionTargets = analysis.suspiciousPlayers.filter(p => 
+                p.player.id !== wizardBot.id && p.suspicion > 45 && p.suspicion < 70
+            );
+            
+            if (moderateSuspicionTargets.length > 0) {
+                const target = moderateSuspicionTargets[0].player;
+                console.log(`[마법사 AI] ${wizardBot.name}: 중간 의심도 플레이어 ${target.name} 타겟 (의심도: ${moderateSuspicionTargets[0].suspicion})`);
+                return target;
+            }
+        }
+
+        // 전략 5: 무작위 선택 (40% 확률로만)
+        if (Math.random() < 0.4) {
+            const randomTarget = this.chooseRandomTarget(room, wizardBot, 'wizard');
+            if (randomTarget) {
+                console.log(`[마법사 AI] ${wizardBot.name}: 무작위 플레이어 ${randomTarget.name} 타겟`);
+                return randomTarget;
+            }
+        }
+
+        // 전략 6: 능력 사용 안 함
+        console.log(`[마법사 AI] ${wizardBot.name}: 적절한 타겟이 없어 능력 사용하지 않음`);
         return null;
     }
 
@@ -1050,11 +1964,14 @@ class BotAI {
         let targets = [];
 
         if (role === 'mafia') {
-            // 마피아는 자신과 다른 마피아 제외
-            targets = alivePlayers.filter(p => 
-                p.id !== bot.id && 
-                this.getPlayerRole(room, p.id) !== 'mafia'
-            );
+            // 마피아는 자신과 다른 마피아 제외 (마피아는 팀원을 알고 있음)
+            targets = alivePlayers.filter(p => {
+                if (p.id === bot.id) return false; // 자신 제외
+                
+                // 같은 마피아 팀원 제외 (게임 규칙상 마피아는 서로 알고 있음)
+                const playerObj = room.players.get(p.id) || room.bots.get(p.id);
+                return playerObj ? playerObj.role !== 'mafia' : true;
+            });
         } else if (role === 'doctor') {
             // 의사는 자신을 제외한 모든 살아있는 플레이어 대상 (자신 치료 불가)
             targets = alivePlayers.filter(p => p.id !== bot.id);
@@ -1076,6 +1993,2282 @@ class BotAI {
         const player = room.players.get(playerId) || room.bots.get(playerId);
         return player ? player.role : null;
     }
+
+    // === 봇 채팅 시스템 ===
+
+    // 봇 채팅 메시지 생성 및 전송
+    generateBotChat(room, bot, phase, context = {}) {
+        if (!room || !bot || !bot.alive) return;
+
+        const message = this.createChatMessage(room, bot, phase, context);
+        if (!message) return;
+
+        console.log(`[봇 채팅] ${bot.name} (${bot.role}): ${message}`);
+
+        // 채팅 메시지를 AI 히스토리에 저장
+        this.addChatMessage(room.code, {
+            type: 'player',
+            playerId: bot.id,
+            playerName: bot.name,
+            message,
+            round: room.round,
+            gamePhase: phase
+        }, room);
+
+        // 방 전체에 채팅 메시지 전송
+        io.to(room.code).emit('chatMessage', {
+            type: 'player',
+            playerName: bot.name,
+            message,
+            timestamp: new Date()
+        });
+    }
+
+    // 마피아 봇 전용 채팅 생성
+    generateMafiaChat(room, mafiaBot, context = {}) {
+        if (!room || !mafiaBot || !mafiaBot.alive || mafiaBot.role !== 'mafia') return;
+
+        const message = this.createMafiaChatMessage(room, mafiaBot, context);
+        if (!message) return;
+
+        console.log(`[마피아 채팅] ${mafiaBot.name}: ${message}`);
+
+        // 마피아 채팅 메시지를 AI 히스토리에 저장
+        this.addChatMessage(room.code, {
+            type: 'mafia_chat',
+            playerId: mafiaBot.id,
+            playerName: mafiaBot.name,
+            message,
+            round: room.round,
+            gamePhase: 'night'
+        }, room);
+
+        // 마피아 팀원들에게만 메시지 전송
+        const allPlayers = [...room.players.values(), ...room.bots.values()];
+        const mafiaMembers = allPlayers.filter(p => p.role === 'mafia' && p.alive);
+        
+        for (const mafia of mafiaMembers) {
+            if (!mafia.isBot) { // 실제 플레이어에게만 전송
+                io.to(mafia.id).emit('mafiaChatMessage', {
+                    type: 'mafia',
+                    playerName: mafiaBot.name,
+                    message,
+                    timestamp: new Date()
+                });
+            }
+        }
+    }
+
+    // 일반 채팅 메시지 생성
+    createChatMessage(room, bot, phase, context) {
+        const history = this.gameHistory.get(room.code);
+        if (!history) return null;
+
+        const alivePlayers = this.getAlivePlayers(room);
+        const suspiciousPlayers = this.getMostSuspiciousPlayers(history, alivePlayers);
+        const trustedPlayers = this.getMostTrustedPlayers(history, alivePlayers, room);
+
+        switch (bot.role) {
+            case 'citizen':
+                return this.createCitizenMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers);
+            case 'police':
+                return this.createPoliceMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers);
+            case 'doctor':
+                return this.createDoctorMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers);
+            case 'mafia':
+                return this.createMafiaMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers);
+            default:
+                return null;
+        }
+    }
+
+    // 시민 봇 메시지 생성 (자연스러운 반말)
+    createCitizenMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
+        // 고급 추리 시스템 사용
+        const analysis = this.performAdvancedDeduction(room, bot);
+        
+        if (analysis && analysis.playerProfiles.size > 0) {
+            return this.createSmartCitizenMessage(room, bot, phase, context, analysis);
+        }
+        
+        // 기존 로직 fallback (자연스러운 반말)
+        const messages = [
+            "마피아 찾아야 해",
+            "누가 의심스러워?",
+            "증거 보고 투표하자",
+            "신중하게 생각해야지",
+            "마피아 어디 숨었을까?",
+            "진짜 마피아 누구야?",
+            "다들 어떻게 생각해?",
+            "뭔가 이상한데...",
+            "확실한 증거가 필요해",
+            "마피아 빨리 찾자!"
+        ];
+        
+        if (suspiciousPlayers.length > 0) {
+            const target = suspiciousPlayers[0];
+            messages.push(`${target.player.name} 의심스러워`);
+            messages.push(`${target.player.name} 행동이 이상해`);
+            messages.push(`${target.player.name} 좀 수상하지 않아?`);
+        }
+        
+        if (trustedPlayers.length > 0) {
+            const trusted = trustedPlayers[0];
+            messages.push(`${trusted.player.name} 믿을만한 것 같아`);
+            messages.push(`${trusted.player.name} 시민 같은데?`);
+        }
+        
+        return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    // 스마트 시민 메시지 생성 (자연스러운 반말)
+    createSmartCitizenMessage(room, bot, phase, context, analysis) {
+        const messages = [];
+        
+        // 마피아 의심자에 대한 논리적 추리
+        const highSuspicionPlayers = Array.from(analysis.playerProfiles.values())
+            .filter(p => p.mafiaLikelihood > 60)
+            .sort((a, b) => b.mafiaLikelihood - a.mafiaLikelihood);
+        
+        if (highSuspicionPlayers.length > 0) {
+            const suspect = highSuspicionPlayers[0];
+            const reasons = suspect.keyTraits.slice(0, 2).join(', ');
+            messages.push(`${suspect.playerName} 의심스러워. ${reasons}`);
+            messages.push(`${suspect.playerName} 행동 패턴이 마피아 같은데?`);
+            messages.push(`${suspect.playerName} 진짜 수상해`);
+        }
+        
+        // 경찰 조사 결과 활용
+        const policeResults = this.getPoliceResultsFromAnalysis(analysis);
+        if (policeResults.length > 0) {
+            const result = policeResults[0];
+            if (result.result === 'mafia') {
+                messages.push(`경찰이 ${result.target} 마피아라고 했어!`);
+                messages.push(`${result.target} 마피아 확실해!`);
+            } else {
+                messages.push(`경찰이 ${result.target} 무고하다고 했어`);
+                messages.push(`${result.target} 시민 맞나 봐`);
+            }
+        }
+        
+        // 투표 패턴 분석 공유 (자기 자신 제외)
+        const votingInsights = this.generateVotingInsights(analysis, bot.id, room);
+        if (votingInsights) {
+            messages.push(votingInsights);
+        }
+        
+        // 생존 패턴 분석 공유 (자기 자신 제외)
+        const survivalInsights = this.generateSurvivalInsights(analysis, bot.id, room);
+        if (survivalInsights) {
+            messages.push(survivalInsights);
+        }
+        
+        // 기본 메시지 (자연스러운 반말)
+        if (messages.length === 0) {
+            messages.push("신중하게 분석해보자");
+            messages.push("모든 정보 종합해서 생각해야지");
+            messages.push("뭔가 단서가 있을 텐데...");
+            messages.push("누가 마피아일까?");
+        }
+        
+        return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    // 경찰 봇 메시지 생성 (자연스러운 반말)
+    createPoliceMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
+        const analysis = this.performAdvancedDeduction(room, bot);
+        
+        if (analysis && analysis.playerProfiles.size > 0) {
+            return this.createSmartPoliceMessage(room, bot, phase, context, analysis);
+        }
+        
+        // 기존 로직 fallback (자연스러운 반말)
+        const messages = [
+            "조사 결과 분석하고 있어",
+            "증거 보고 투표할 거야",
+            "마피아 찾으려고 노력 중이야",
+            "정확한 정보 줄게",
+            "내가 경찰이니까 믿어줘",
+            "수사 진행하고 있어",
+            "마피아 잡을 거야",
+            "조사 결과 곧 알려줄게"
+        ];
+        
+        return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    // 스마트 경찰 메시지 생성 - 개선됨
+    createSmartPoliceMessage(room, bot, phase, context, analysis) {
+        const messages = [];
+        const history = this.gameHistory.get(room.code);
+        
+        // 🔍 조사 결과 발표 (아침/토론 시간에 우선적으로)
+        if ((phase === 'discussion' || phase === 'morning') && history) {
+            let investigationsToCheck = [];
+            
+            // 1. 먼저 현재 라운드(currentRound)에서 조사 결과 확인
+            if (history.currentRound && history.currentRound.investigations && history.currentRound.investigations.length > 0) {
+                investigationsToCheck = history.currentRound.investigations;
+                console.log(`[경찰 메시지] ${bot.name}: 현재 라운드 ${room.round} 조사 결과 확인 중...`);
+            }
+            // 2. 현재 라운드에 없으면 마지막 완료된 라운드에서 확인
+            else if (history.rounds.length > 0) {
+            const lastRound = history.rounds[history.rounds.length - 1];
+                if (lastRound.investigations && lastRound.investigations.length > 0) {
+                    investigationsToCheck = lastRound.investigations;
+            console.log(`[경찰 메시지] ${bot.name}: 라운드 ${lastRound.round} 조사 결과 확인 중...`);
+                }
+            }
+            
+            // 조사 결과가 있으면 발표
+            if (investigationsToCheck.length > 0) {
+                for (const investigation of investigationsToCheck) {
+                    console.log(`[경찰 메시지] 조사 기록: ${investigation.investigator} → ${investigation.target} (${investigation.result})`);
+                    
+                    if (investigation.investigator === bot.id) {
+                        const targetName = this.getPlayerName(investigation.target, room);
+                        if (investigation.result === 'mafia') {
+                            console.log(`[경찰 결과 발표] ${bot.name}: ${targetName} 마피아 발표`);
+                            const mafiaAnnouncements = [
+                                `야! ${targetName} 마피아야! 내가 조사했어!`,
+                                `${targetName} 마피아 확실해! 투표해!`,
+                                `조사 결과 나왔어! ${targetName} 마피아야!`,
+                                `${targetName} 진짜 마피아라고! 믿어줘!`,
+                                `내가 경찰이야, ${targetName} 마피아 맞아!`
+                            ];
+                            return mafiaAnnouncements[Math.floor(Math.random() * mafiaAnnouncements.length)];
+                        } else {
+                            console.log(`[경찰 결과 발표] ${bot.name}: ${targetName} 무고 발표`);
+                            const innocentAnnouncements = [
+                                `${targetName} 시민이야, 조사해봤어`,
+                                `${targetName} 마피아 아니야 확실해`,
+                                `조사 결과 ${targetName} 무고해`,
+                                `${targetName} 믿어도 돼, 시민이야`,
+                                `${targetName} 시민 확정이야`
+                            ];
+                            return innocentAnnouncements[Math.floor(Math.random() * innocentAnnouncements.length)];
+                        }
+                    }
+                }
+            } else {
+                console.log(`[경찰 메시지] ${bot.name}: 조사 기록 없음`);
+            }
+        }
+        
+        // 경찰 역할 주장 (조사 결과가 없는 경우)
+        if (phase === 'discussion' && Math.random() < 0.3) {
+            const roleClaimMessages = [
+                "나 경찰이야. 조사 결과 알려줄게",
+                "내가 경찰이니까 믿어줘",
+                "경찰인 나만 믿어",
+                "나 진짜 경찰이야, 조사했어"
+            ];
+            messages.push(roleClaimMessages[Math.floor(Math.random() * roleClaimMessages.length)]);
+        }
+        
+        // 추리 결과 공유
+        if (analysis && analysis.playerProfiles) {
+            const mafiaLikelyPlayers = Array.from(analysis.playerProfiles.values())
+                .filter(p => p.mafiaLikelihood > 70 && p.playerId !== bot.id)
+                .sort((a, b) => b.mafiaLikelihood - a.mafiaLikelihood);
+            
+            if (mafiaLikelyPlayers.length > 0) {
+                const suspect = mafiaLikelyPlayers[0];
+                messages.push(`${suspect.playerName} 마피아일 가능성 높아`);
+                messages.push(`${suspect.playerName} 진짜 수상해`);
+            }
+        }
+        
+        // 수사 전략 공유
+        if (phase === 'discussion') {
+            messages.push("체계적으로 수사할 거야");
+            messages.push("모든 증거 종합해서 판단하자");
+            messages.push("의심스러운 사람 있으면 말해줘");
+            messages.push("다음에 누구 조사할까?");
+        } else if (phase === 'voting') {
+            messages.push("증거 보고 투표하자");
+            messages.push("확실한 마피아한테 투표해야 해");
+            messages.push("잘못 투표하면 안 돼");
+        }
+        
+        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : "계속 수사할게";
+    }
+
+    // 의사 봇 메시지 생성
+    createDoctorMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
+        const messages = [];
+
+        if (phase === 'discussion') {
+            if (context.nightResults) {
+                if (context.nightResults.killed) {
+                    const killedName = this.getPlayerNameById(context.nightResults.killed, room);
+                    messages.push(`${killedName} 살리지 못해서 미안해...`);
+                    messages.push(`어젯밤 치료했는데 못 살렸어`);
+                    messages.push(`아니 진짜 죄송해... 살릴 수 없었어`);
+                } else if (context.nightResults.saved) {
+                    // 의사가 성공적으로 치료한 경우 (직접적으로 말하지 않음)
+                    messages.push('다행히 어젯밤엔 아무도 안 죽었네');
+                    messages.push('좋은 일이야, 모두 살았어');
+                    messages.push('누군가 살렸나 봐, 다행이다');
+                }
+            }
+            
+            // 보호적이고 평화로운 발언
+            if (trustedPlayers.length > 0) {
+                const trusted = trustedPlayers[0];
+                if (trusted && trusted.player && trusted.player.id) {
+                    const trustedName = this.getPlayerNameById(trusted.player.id, room);
+                    messages.push(`${trustedName} 보호해야겠어`);
+                    messages.push(`${trustedName} 걱정돼`);
+                    messages.push(`${trustedName} 안전했으면 좋겠는데`);
+                }
+            }
+            
+            messages.push('모두 안전했으면 좋겠어');
+            messages.push('마피아 빨리 찾아서 평화롭게 하자');
+            messages.push('더 이상 희생자 없었으면 해');
+            messages.push('누가 위험할까?');
+            messages.push('다들 조심해야 해');
+            messages.push('마피아가 누구 노릴까?');
+        } else if (phase === 'voting') {
+            messages.push('신중하게 투표해야지');
+            messages.push('무고한 사람 투표하면 안 돼');
+            messages.push('확실한 증거 있을 때 투표하자');
+            messages.push('잘못 투표하면 큰일나');
+            messages.push('정말 마피아인지 확실해?');
+        }
+
+        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : null;
+    }
+
+    // 마피아 봇 메시지 생성 (일반 채팅 - 기만과 속임수, 자연스러운 반말)
+    createMafiaMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
+        // 🎭 가짜 경찰 봇인 경우 거짓 조사 결과 발표 (최우선 - 분석 여부와 관계없이)
+        if (this.isFakePoliceBot(room.code, bot.id)) {
+            console.log(`[가짜 경찰 채팅 기본] ${bot.name}이 가짜 경찰 연기 중...`);
+            
+            // 토론이나 아침 시간에만 조사 결과 발표
+            if (phase === 'discussion' || phase === 'morning') {
+                const unnouncedInvestigations = this.getUnnouncedFakeInvestigations(room.code, bot.id);
+                
+                if (unnouncedInvestigations.length > 0) {
+                    const fakeInv = unnouncedInvestigations[0]; // 가장 최근 조사 결과
+                    
+                    // 발표됨으로 표시
+                    this.markFakeInvestigationAsAnnounced(room.code, bot.id, fakeInv.target);
+                    
+                    if (fakeInv.result === 'mafia') {
+                        // 무고한 사람을 마피아로 거짓 발표
+                        const fakeMafiaAnnouncements = [
+                            `야! ${fakeInv.targetName} 마피아야! 내가 조사했어!`,
+                            `${fakeInv.targetName} 마피아 확실해! 투표해!`,
+                            `조사 결과 나왔어! ${fakeInv.targetName} 마피아야!`,
+                            `${fakeInv.targetName} 진짜 마피아라고! 믿어줘!`,
+                            `내가 경찰이야, ${fakeInv.targetName} 마피아 맞아!`,
+                            `${fakeInv.targetName} 조사했는데 마피아였어!`,
+                            `경찰인 내가 확인했어, ${fakeInv.targetName} 마피아야!`
+                        ];
+                        console.log(`[가짜 경찰 발표 기본] ${bot.name}: ${fakeInv.targetName}을 마피아로 거짓 발표`);
+                        return fakeMafiaAnnouncements[Math.floor(Math.random() * fakeMafiaAnnouncements.length)];
+                    } else {
+                        // 마피아 동료를 시민으로 거짓 발표
+                        const fakeInnocentAnnouncements = [
+                            `${fakeInv.targetName} 시민이야, 조사해봤어`,
+                            `${fakeInv.targetName} 마피아 아니야 확실해`,
+                            `조사 결과 ${fakeInv.targetName} 무고해`,
+                            `${fakeInv.targetName} 믿어도 돼, 시민이야`,
+                            `${fakeInv.targetName} 시민 확정이야`,
+                            `내가 조사했는데 ${fakeInv.targetName} 깨끗해`,
+                            `경찰인 내가 보증해, ${fakeInv.targetName} 시민 맞아`
+                        ];
+                        console.log(`[가짜 경찰 발표 기본] ${bot.name}: ${fakeInv.targetName}을 시민으로 거짓 발표`);
+                        return fakeInnocentAnnouncements[Math.floor(Math.random() * fakeInnocentAnnouncements.length)];
+                    }
+                }
+                
+                // 조사 결과가 없으면 경찰 역할 주장
+                if (Math.random() < 0.3) { // 30% 확률
+                    const policeClaimMessages = [
+                        "나 경찰이야. 조사 결과 알려줄게",
+                        "내가 경찰이니까 믿어줘",
+                        "경찰인 나만 믿어",
+                        "나 진짜 경찰이야, 조사했어",
+                        "경찰로서 말하는데 신중하게 해야 해",
+                        "내가 경찰이니까 내 말 들어봐"
+                    ];
+                    console.log(`[가짜 경찰 역할 주장 기본] ${bot.name}: 경찰 역할 주장`);
+                    return policeClaimMessages[Math.floor(Math.random() * policeClaimMessages.length)];
+                }
+            }
+        }
+
+        const analysis = this.performAdvancedDeduction(room, bot);
+        
+        if (analysis && analysis.playerProfiles.size > 0) {
+            return this.createSmartMafiaMessage(room, bot, phase, context, analysis);
+        }
+        
+        // 기존 로직 fallback (시민인 척 연기하는 자연스러운 반말)
+        const messages = [
+            "마피아 찾아야 해",
+            "누가 의심스러워?",
+            "증거가 부족한데?",
+            "신중하게 생각해야지",
+            "진짜 마피아 누구야?",
+            "다들 어떻게 생각해?",
+            "확실한 증거 없으면 위험해",
+            "시민끼리 싸우면 안 되는데...",
+            "마피아가 웃고 있을 거야"
+        ];
+        
+        if (suspiciousPlayers.length > 0) {
+            const target = suspiciousPlayers[0];
+            messages.push(`${target.player.name} 좀 의심스럽네`);
+            messages.push(`${target.player.name} 어떻게 생각해?`);
+            messages.push(`${target.player.name} 행동이 이상하지 않아?`);
+        }
+        
+        return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    // 스마트 마피아 메시지 생성 (교묘한 자연스러운 반말)
+    createSmartMafiaMessage(room, bot, phase, context, analysis) {
+        const messages = [];
+        
+        // 🎭 가짜 경찰 봇인 경우 거짓 조사 결과 발표 (최우선)
+        if (this.isFakePoliceBot(room.code, bot.id)) {
+            console.log(`[가짜 경찰 채팅] ${bot.name}이 가짜 경찰 연기 중...`);
+            
+            // 토론이나 아침 시간에만 조사 결과 발표
+            if (phase === 'discussion' || phase === 'morning') {
+                const unnouncedInvestigations = this.getUnnouncedFakeInvestigations(room.code, bot.id);
+                
+                if (unnouncedInvestigations.length > 0) {
+                    const fakeInv = unnouncedInvestigations[0]; // 가장 최근 조사 결과
+                    
+                    // 발표됨으로 표시
+                    this.markFakeInvestigationAsAnnounced(room.code, bot.id, fakeInv.target);
+                    
+                    if (fakeInv.result === 'mafia') {
+                        // 무고한 사람을 마피아로 거짓 발표
+                        const fakeMafiaAnnouncements = [
+                            `야! ${fakeInv.targetName} 마피아야! 내가 조사했어!`,
+                            `${fakeInv.targetName} 마피아 확실해! 투표해!`,
+                            `조사 결과 나왔어! ${fakeInv.targetName} 마피아야!`,
+                            `${fakeInv.targetName} 진짜 마피아라고! 믿어줘!`,
+                            `내가 경찰이야, ${fakeInv.targetName} 마피아 맞아!`,
+                            `${fakeInv.targetName} 조사했는데 마피아였어!`,
+                            `경찰인 내가 확인했어, ${fakeInv.targetName} 마피아야!`
+                        ];
+                        console.log(`[가짜 경찰 발표] ${bot.name}: ${fakeInv.targetName}을 마피아로 거짓 발표`);
+                        return fakeMafiaAnnouncements[Math.floor(Math.random() * fakeMafiaAnnouncements.length)];
+                    } else {
+                        // 마피아 동료를 시민으로 거짓 발표
+                        const fakeInnocentAnnouncements = [
+                            `${fakeInv.targetName} 시민이야, 조사해봤어`,
+                            `${fakeInv.targetName} 마피아 아니야 확실해`,
+                            `조사 결과 ${fakeInv.targetName} 무고해`,
+                            `${fakeInv.targetName} 믿어도 돼, 시민이야`,
+                            `${fakeInv.targetName} 시민 확정이야`,
+                            `내가 조사했는데 ${fakeInv.targetName} 깨끗해`,
+                            `경찰인 내가 보증해, ${fakeInv.targetName} 시민 맞아`
+                        ];
+                        console.log(`[가짜 경찰 발표] ${bot.name}: ${fakeInv.targetName}을 시민으로 거짓 발표`);
+                        return fakeInnocentAnnouncements[Math.floor(Math.random() * fakeInnocentAnnouncements.length)];
+                    }
+                }
+                
+                // 조사 결과가 없으면 경찰 역할 주장
+                if (Math.random() < 0.4) { // 40% 확률
+                    const policeClaimMessages = [
+                        "나 경찰이야. 조사 결과 알려줄게",
+                        "내가 경찰이니까 믿어줘",
+                        "경찰인 나만 믿어",
+                        "나 진짜 경찰이야, 조사했어",
+                        "경찰로서 말하는데 신중하게 해야 해",
+                        "내가 경찰이니까 내 말 들어봐"
+                    ];
+                    console.log(`[가짜 경찰 역할 주장] ${bot.name}: 경찰 역할 주장`);
+                    return policeClaimMessages[Math.floor(Math.random() * policeClaimMessages.length)];
+                }
+            }
+        }
+        
+        // 일반 마피아 연기 (기존 로직)
+        
+        // 무고한 시민을 의심하는 발언 (교묘하게)
+        const innocentTargets = Array.from(analysis.playerProfiles.values())
+            .filter(p => p.suspectedRole !== 'mafia' && p.mafiaLikelihood < 30)
+            .sort((a, b) => b.trustLevel - a.trustLevel);
+        
+        if (innocentTargets.length > 0) {
+            const target = innocentTargets[0];
+            messages.push(`${target.playerName} 좀 의심스럽지 않아?`);
+            messages.push(`${target.playerName} 행동이 이상한데?`);
+            messages.push(`${target.playerName} 뭔가 수상해`);
+            messages.push(`${target.playerName} 말이 앞뒤가 안 맞는 것 같은데`);
+        }
+        
+        // 경찰/의사 주장자 의심 (교묘하게 의심 유도)
+        const specialRoleClaimants = Array.from(analysis.playerProfiles.values())
+            .filter(p => p.suspectedRole === 'police' || p.suspectedRole === 'doctor');
+        
+        if (specialRoleClaimants.length > 0) {
+            const target = specialRoleClaimants[0];
+            messages.push(`${target.playerName} 역할 주장이 좀... 의심스럽지 않아?`);
+            messages.push(`진짜 ${target.playerName} 믿어도 될까?`);
+            messages.push(`${target.playerName} 증거가 좀 부족한 것 같은데`);
+        }
+        
+        // 시민 진영 분열 유도 (교묘하게)
+        messages.push("서로 의심하지 말고 협력해야지");
+        messages.push("증거 없이 의심하면 안 되는데");
+        messages.push("시민끼리 싸우면 마피아만 좋아해");
+        messages.push("차분하게 생각해보자");
+        
+        // 정보 혼란 유도
+        messages.push("정보가 부족해서 판단하기 어렵네");
+        messages.push("뭔가 확실하지 않아");
+        messages.push("누구 말을 믿어야 할지 모르겠어");
+        messages.push("좀 더 신중하게 해야겠어");
+        
+        return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    // 보조 함수들
+    getPoliceResultsFromAnalysis(analysis) {
+        const results = [];
+        // 분석에서 경찰 조사 결과 추출
+        // 실제 구현에서는 히스토리에서 경찰 조사 결과를 가져와야 함
+        return results;
+    }
+
+    generateVotingInsights(analysis, currentBotId = null, room = null) {
+        // 투표 패턴에서 인사이트 생성 (자연스러운 반말, 자기 자신 제외)
+        const insights = [];
+        
+        if (analysis && analysis.votingAnalysis && analysis.votingAnalysis.size > 0) {
+            for (const [playerId, pattern] of analysis.votingAnalysis) {
+                // 🚨 자기 자신에 대한 분석은 말하지 않음
+                if (currentBotId && playerId === currentBotId) {
+                    continue;
+                }
+                
+                if (pattern.votedForCitizen > pattern.votedForMafia && pattern.totalVotes > 1) {
+                    // room이 있으면 room에서 찾고, 없으면 analysis에서 찾기
+                    const playerName = room ? this.getPlayerName(playerId, room) : this.getPlayerNameById(playerId, analysis);
+                    
+                    // unknown이면 메시지 생성 안 함
+                    if (playerName === 'unknown') continue;
+                    
+                    const votingInsights = [
+                        `${playerName} 시민들한테 투표 많이 했네`,
+                        `${playerName} 마피아보다 시민 투표 더 많이 해`,
+                        `${playerName} 투표 패턴이 좀 이상한데?`,
+                        `${playerName} 왜 시민들만 골라서 투표하지?`
+                    ];
+                    insights.push(votingInsights[Math.floor(Math.random() * votingInsights.length)]);
+                }
+            }
+        }
+        
+        return insights.length > 0 ? insights[0] : null;
+    }
+
+    generateSurvivalInsights(analysis, currentBotId = null, room = null) {
+        // 생존 패턴에서 인사이트 생성 (자연스러운 반말, 자기 자신 제외)
+        const insights = [];
+        
+        if (analysis && analysis.survivalAnalysis && analysis.survivalAnalysis.size > 0) {
+            for (const [playerId, pattern] of analysis.survivalAnalysis) {
+                // 🚨 자기 자신에 대한 분석은 말하지 않음
+                if (currentBotId && playerId === currentBotId) {
+                    continue;
+                }
+                
+                if (pattern.nightsSurvived > 2 && pattern.timesAttacked === 0) {
+                    // room이 있으면 room에서 찾고, 없으면 analysis에서 찾기
+                    const playerName = room ? this.getPlayerName(playerId, room) : this.getPlayerNameById(playerId, analysis);
+                    
+                    // unknown이면 메시지 생성 안 함
+                    if (playerName === 'unknown') continue;
+                    
+                    const survivalInsights = [
+                        `${playerName} 계속 살아남는 게 수상한데?`,
+                        `${playerName} 왜 마피아가 안 죽이지?`,
+                        `${playerName} 너무 오래 살아있어`,
+                        `${playerName} 마피아가 안 건드리는 것 같은데?`,
+                        `${playerName} 생존률이 좀 이상해`
+                    ];
+                    insights.push(survivalInsights[Math.floor(Math.random() * survivalInsights.length)]);
+                }
+            }
+        }
+        
+        return insights.length > 0 ? insights[0] : null;
+    }
+
+    getPlayerName(playerId, room) {
+        if (!room || !room.players) {
+            return 'unknown';
+        }
+        const player = room.players.get(playerId) || room.bots.get(playerId);
+        return player ? player.name : 'unknown';
+    }
+
+    getPlayerNameById(playerId, roomOrAnalysis) {
+        // roomOrAnalysis가 analysis 객체인 경우 (새로운 스마트 시스템)
+        if (roomOrAnalysis && roomOrAnalysis.playerProfiles) {
+            const profile = roomOrAnalysis.playerProfiles.get(playerId);
+            return profile ? profile.playerName : 'unknown';
+        }
+        
+        // roomOrAnalysis가 room 객체인 경우 (기존 시스템)
+        if (roomOrAnalysis && roomOrAnalysis.players) {
+            const player = roomOrAnalysis.players.get(playerId) || roomOrAnalysis.bots.get(playerId);
+            return player ? player.name : 'unknown';
+        }
+        
+        return 'unknown';
+    }
+
+    // 마피아 전용 채팅 메시지 생성
+    createMafiaChatMessage(room, mafiaBot, context) {
+        if (!room || !mafiaBot || !context) {
+            return null;
+        }
+        
+        const messages = [];
+        const alivePlayers = this.getAlivePlayers(room);
+        if (!alivePlayers || alivePlayers.length === 0) {
+            return null;
+        }
+        
+        const mafiaMembers = alivePlayers.filter(p => p.role === 'mafia');
+        const innocentPlayers = alivePlayers.filter(p => p.role !== 'mafia');
+
+        if (context.planning) {
+            // 밤 행동 계획 (더 자연스러운 반말)
+            if (innocentPlayers.length > 0) {
+                const target = innocentPlayers[Math.floor(Math.random() * innocentPlayers.length)];
+                const targetName = this.getPlayerName(target.id, room);
+                messages.push(`${targetName} 죽이는 게 어때?`);
+                messages.push(`${targetName} 위험해 보이는데, 제거하자`);
+                messages.push(`${targetName} 타겟으로 하면 어떨까?`);
+                messages.push(`${targetName} 없애야겠어`);
+                messages.push(`${targetName} 얘 좀 위험한 것 같은데`);
+            }
+            
+            messages.push('누구 죽일까?');
+            messages.push('경찰이 누군지 알아내야 해');
+            messages.push('의사가 누구 보호할까?');
+            messages.push('다음 타겟 정해야지');
+            messages.push('누가 제일 위험해?');
+            
+        } else if (context.discussion) {
+            // 토론 전략 (더 자연스러운 반말)
+            messages.push('시민인 척 잘 해야 해');
+            messages.push('누구 의심할까?');
+            messages.push('경찰 척 하는 놈 조심해');
+            messages.push('투표에서 누구 밀어낼까?');
+            messages.push('들키면 안 되니까 조심하자');
+            messages.push('자연스럽게 행동해야 해');
+            messages.push('너무 티 내지 마');
+            
+        } else {
+            // 일반적인 협력 메시지 (더 자연스러운 반말)
+            messages.push('팀워크가 중요해');
+            messages.push('시민들 속이기 쉽지 않네');
+            messages.push('우리가 이길 수 있어!');
+            messages.push('잘 하고 있어');
+            messages.push('이번엔 꼭 이기자');
+        }
+
+        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : null;
+    }
+
+    // 중복 함수 제거됨 - 위에 정의된 getPlayerNameById 함수 사용
+
+    // 페이즈별 봇 채팅 시작 - 개선됨
+    triggerBotChats(room, phase, context = {}) {
+        const aliveBots = Array.from(room.bots.values()).filter(bot => bot.alive);
+        
+        // 🔍 경찰 봇이 조사 결과를 발표할 수 있는 상황인지 확인
+        if (phase === 'discussion') {
+            const policeBots = aliveBots.filter(bot => bot.role === 'police');
+            
+            // 경찰 봇이 있으면 우선적으로 조사 결과 발표
+            policeBots.forEach((policeBot, index) => {
+                const delay = 1000 + (index * 500); // 경찰은 빠르게 발표 (1-2초)
+                
+                setTimeout(() => {
+                    if (room.gameState === phase && policeBot.alive) {
+                        console.log(`[경찰 우선 채팅] ${policeBot.name}: 조사 결과 발표 시도`);
+                        this.generateBotChat(room, policeBot, phase, context);
+                    }
+                }, delay);
+            });
+        }
+        
+        // 나머지 봇들은 경찰 발표 후에 채팅
+        const nonPoliceBots = aliveBots.filter(bot => bot.role !== 'police');
+        const shuffledBots = nonPoliceBots.sort(() => Math.random() - 0.5);
+        
+        shuffledBots.forEach((bot, index) => {
+            // 경찰이 먼저 발표할 시간을 고려한 지연 시간
+            const baseDelay = phase === 'discussion' ? 4000 : 2000; // 토론 시간에는 경찰 발표 후
+            const delay = baseDelay + (Math.random() * 10000);
+            
+            setTimeout(() => {
+                if (room.gameState === phase && bot.alive) {
+                    this.generateBotChat(room, bot, phase, context);
+                }
+            }, delay);
+        });
+    }
+
+    // 마피아 봇들의 밤 시간 채팅
+    triggerMafiaChats(room) {
+        if (!room || !room.bots) {
+            console.log('[에러] triggerMafiaChats: room 또는 bots가 존재하지 않음');
+            return;
+        }
+        
+        const aliveMafiaBots = Array.from(room.bots.values()).filter(
+            bot => bot.alive && bot.role === 'mafia'
+        );
+        
+        aliveMafiaBots.forEach((mafiaBot, index) => {
+            // 밤 시간 초반에 계획 세우기
+            setTimeout(() => {
+                // 타이머 실행 시점에 room 상태 재확인
+                if (room && room.gameState === 'night' && mafiaBot.alive) {
+                    this.generateMafiaChat(room, mafiaBot, { planning: true });
+                }
+            }, Math.random() * 5000 + 3000); // 3-8초 후
+        });
+    }
+
+    // 📈 고급 추리 시스템 - 게임 상황 종합 분석
+    performAdvancedDeduction(room, bot) {
+        const history = this.gameHistory.get(room.code);
+        if (!history) return null;
+
+        const alivePlayers = this.getAlivePlayers(room);
+        const analysis = {
+            playerProfiles: new Map(),
+            gamePhase: this.determineGamePhase(room, alivePlayers),
+            mafiaEstimate: this.estimateMafiaMembers(room, history, alivePlayers),
+            roleDeductions: this.deducePlayerRoles(room, history, alivePlayers),
+            votingAnalysis: this.analyzeVotingPatterns(room, history),
+            survivalAnalysis: this.analyzeSurvivalPatterns(room, history),
+            chatAnalysis: this.performChatAnalysis(room, history),
+            threats: this.identifyThreatsAndAllies(room, history, alivePlayers, bot)
+        };
+
+        // 각 플레이어에 대한 종합 프로필 생성
+        for (const player of alivePlayers) {
+            analysis.playerProfiles.set(player.id, this.createPlayerProfile(player, analysis, bot));
+        }
+
+        return analysis;
+    }
+
+    // 게임 페이즈 판단
+    determineGamePhase(room, alivePlayers) {
+        const totalPlayers = room.players.size + room.bots.size;
+        const aliveCount = alivePlayers.length;
+        const round = room.round;
+
+        if (round <= 2) return 'early';
+        if (aliveCount <= 4 || aliveCount / totalPlayers <= 0.5) return 'late';
+        return 'middle';
+    }
+
+    // 마피아 멤버 추정
+    estimateMafiaMembers(room, history, alivePlayers) {
+        const estimates = new Map();
+        
+        for (const player of alivePlayers) {
+            let mafiaLikelihood = 0;
+            
+            // 1. 밤 생존 패턴 (마피아는 밤에 안 죽음)
+            mafiaLikelihood += this.calculateNightSurvivalScore(player.id, history) * 0.3;
+            
+            // 2. 투표 패턴 (마피아는 시민을 겨냥)
+            mafiaLikelihood += this.calculateVotingScore(player.id, history) * 0.25;
+            
+            // 3. 발언 분석 (거짓말 패턴)
+            mafiaLikelihood += this.calculateDeceptionScore(player.id, history) * 0.25;
+            
+            // 4. 행동 일관성 (마피아는 모순된 행동)
+            mafiaLikelihood += this.calculateInconsistencyScore(player.id, history) * 0.2;
+            
+            estimates.set(player.id, Math.max(0, Math.min(100, mafiaLikelihood)));
+        }
+
+        return estimates;
+    }
+
+    // 플레이어 역할 추론 - 개선됨
+    deducePlayerRoles(room, history, alivePlayers) {
+        const roleDeductions = new Map();
+        
+        for (const player of alivePlayers) {
+            const deduction = {
+                mostLikelyRole: 'citizen',
+                confidence: 30, // 기본 시민 추정
+                reasons: [],
+                eliminatedRoles: []
+            };
+
+            // 🔍 1. 실제 조사 기록 우선 확인 (가장 중요)
+            const actualInvestigations = this.findPlayerInvestigations(player.id, history);
+            if (actualInvestigations.length > 0) {
+                deduction.mostLikelyRole = 'police';
+                deduction.confidence = 95; // 실제 조사 기록 = 거의 확실히 경찰
+                deduction.reasons.push('실제 조사 기록 존재 - 진짜 경찰');
+                console.log(`[역할 추론] ${player.id}: 실제 조사 기록 → 경찰 (95%)`);
+            }
+
+            // 🔍 2. 플레이어 자신에 대한 조사 결과 확인
+            const investigationResults = this.getInvestigationResults(player.id, history);
+            if (investigationResults.length > 0) {
+                const latestResult = investigationResults[investigationResults.length - 1];
+                if (latestResult.result === 'not_mafia') {
+                    deduction.eliminatedRoles.push('mafia');
+                    deduction.reasons.push('경찰 조사 결과: 마피아 아님');
+                    if (deduction.confidence < 60) {
+                        deduction.confidence = 60; // 조사로 입증된 시민
+                    }
+                } else if (latestResult.result === 'mafia') {
+                    deduction.mostLikelyRole = 'mafia';
+                    deduction.confidence = 90;
+                    deduction.reasons.push('경찰 조사 결과: 마피아');
+                }
+            }
+
+            // 🔍 3. 정보 주장과 역할 주장 분석
+            const statements = history.playerStatements.get(player.id);
+            if (statements) {
+                const roleClaims = statements.roleClaims || [];
+                const informationClaims = statements.informationClaims || [];
+                
+                // 조사 정보 제공자 분석
+                const investigationClaims = informationClaims.filter(ic => ic.type === 'investigation');
+                if (investigationClaims.length > 0) {
+                    if (actualInvestigations.length > 0) {
+                        // 실제 조사 + 정보 발표 = 확실한 경찰
+                        deduction.mostLikelyRole = 'police';
+                        deduction.confidence = 98;
+                        deduction.reasons.push('조사 기록 + 정보 발표 - 확실한 경찰');
+                    } else {
+                        // 조사 기록 없이 조사 정보 주장 = 의심스러움
+                        const hasPoliceRoleClaim = roleClaims.some(rc => rc.role === 'police');
+                        if (hasPoliceRoleClaim) {
+                            deduction.mostLikelyRole = 'citizen'; // 거짓 경찰 주장자
+                            deduction.confidence = 45;
+                            deduction.reasons.push('경찰 주장하지만 조사 기록 없음');
+                        } else {
+                            deduction.mostLikelyRole = 'mafia'; // 의심스러움
+                            deduction.confidence = 60;
+                            deduction.reasons.push('조사 정보만 주장, 역할 주장 없음');
+                        }
+                    }
+                }
+                
+                // 🔍 4. 역할 주장 신뢰도 분석 (조사 기록 없는 경우만)
+                if (deduction.confidence < 70 && roleClaims.length > 0) {
+                    const latestClaim = roleClaims[roleClaims.length - 1];
+                    const claimCredibility = this.verifyRoleClaim(player.id, latestClaim, history);
+                    
+                    if (claimCredibility > deduction.confidence) {
+                        deduction.mostLikelyRole = latestClaim.role;
+                        deduction.confidence = claimCredibility;
+                        deduction.reasons.push(`${latestClaim.role} 주장 (신뢰도: ${claimCredibility}%)`);
+                    }
+                }
+            }
+
+            // 🔍 5. 행동 패턴 분석 (보조적)
+            if (deduction.confidence < 60) {
+                const behaviorAnalysis = this.analyzeBehaviorForRole(player.id, history);
+                if (behaviorAnalysis.suspectedRole !== 'unknown' && behaviorAnalysis.confidence > deduction.confidence) {
+                    deduction.mostLikelyRole = behaviorAnalysis.suspectedRole;
+                    deduction.confidence = behaviorAnalysis.confidence;
+                    deduction.reasons.push(`행동 패턴: ${behaviorAnalysis.suspectedRole} (${behaviorAnalysis.confidence}%)`);
+                }
+            }
+
+            // 최종 확인 - 기본값 보장
+            if (deduction.confidence === 0) {
+                deduction.mostLikelyRole = 'citizen';
+                deduction.confidence = 30;
+                deduction.reasons.push('기본 시민 추정');
+            }
+
+            roleDeductions.set(player.id, deduction);
+        }
+
+        return roleDeductions;
+    }
+
+    // 투표 패턴 분석
+    analyzeVotingPatterns(room, history) {
+        const patterns = new Map();
+        
+        for (const round of history.rounds) {
+            if (round.votes) {
+                for (const [voter, target] of Object.entries(round.votes)) {
+                    if (!patterns.has(voter)) {
+                        patterns.set(voter, {
+                            totalVotes: 0,
+                            targetsKilled: 0,
+                            targetsSurvived: 0,
+                            votedForMafia: 0,
+                            votedForCitizen: 0,
+                            followedMajority: 0,
+                            ledMajority: 0
+                        });
+                    }
+
+                    const pattern = patterns.get(voter);
+                    pattern.totalVotes++;
+
+                    // 투표 대상이 그 라운드에 죽었는지 확인
+                    if (round.eliminated && round.eliminated.id === target) {
+                        pattern.targetsKilled++;
+                        if (round.eliminated.role === 'mafia') {
+                            pattern.votedForMafia++;
+                        } else {
+                            pattern.votedForCitizen++;
+                        }
+                    } else {
+                        pattern.targetsSurvived++;
+                    }
+                }
+            }
+        }
+
+        return patterns;
+    }
+
+    // 생존 패턴 분석
+    analyzeSurvivalPatterns(room, history) {
+        const patterns = new Map();
+        const alivePlayers = this.getAlivePlayers(room);
+        
+        for (const player of alivePlayers) {
+            const pattern = {
+                nightsSurvived: 0,
+                daysSurvived: 0,
+                timesAttacked: 0,
+                timesSaved: 0,
+                attackedEarlyRounds: 0,
+                attackedLateRounds: 0
+            };
+
+            // 밤 생존 분석
+            for (const round of history.rounds) {
+                if (round.nightDeaths && !round.nightDeaths.includes(player.id)) {
+                    pattern.nightsSurvived++;
+                }
+                if (round.nightDeaths && round.nightDeaths.includes(player.id)) {
+                    pattern.timesAttacked++;
+                    if (round.round <= 2) {
+                        pattern.attackedEarlyRounds++;
+                    } else {
+                        pattern.attackedLateRounds++;
+                    }
+                }
+            }
+
+            patterns.set(player.id, pattern);
+        }
+
+        return patterns;
+    }
+
+    // 채팅 분석
+    performChatAnalysis(room, history) {
+        const analysis = new Map();
+        
+        for (const [playerId, statements] of history.playerStatements) {
+            const playerAnalysis = {
+                trustworthiness: 0,
+                consistency: 0,
+                informativeness: 0,
+                defensiveness: 0,
+                suspiciousness: 0,
+                keyBehaviors: []
+            };
+
+            // 일관성 분석
+            playerAnalysis.consistency = this.analyzeStatementConsistency(playerId, statements, history);
+            
+            // 정보 제공 분석
+            playerAnalysis.informativeness = this.analyzeInformationValue(statements);
+            
+            // 방어적 성향 분석
+            playerAnalysis.defensiveness = this.analyzeDefensiveBehavior(statements);
+            
+            // 의심스러운 행동 분석
+            playerAnalysis.suspiciousness = this.analyzeSuspiciousBehavior(statements);
+            
+            // 종합 신뢰도 계산
+            playerAnalysis.trustworthiness = this.calculateOverallTrustworthiness(playerAnalysis);
+
+            analysis.set(playerId, playerAnalysis);
+        }
+
+        return analysis;
+    }
+
+    // 위협과 아군 식별
+    identifyThreatsAndAllies(room, history, alivePlayers, bot) {
+        const threats = [];
+        const allies = [];
+        const unknowns = [];
+
+        for (const player of alivePlayers) {
+            if (player.id === bot.id) continue;
+
+            const mafiaLikelihood = this.estimateMafiaMembers(room, history, alivePlayers).get(player.id) || 0;
+            const roleDeduction = this.deducePlayerRoles(room, history, alivePlayers).get(player.id);
+            
+            if (bot.role === 'mafia') {
+                // 마피아 관점: 다른 마피아는 아군, 나머지는 위협
+                if (player.role === 'mafia') {
+                    allies.push({ player, relationship: 'fellow_mafia', confidence: 100 });
+                } else if (roleDeduction && roleDeduction.mostLikelyRole === 'police') {
+                    threats.push({ player, threat: 'police', confidence: roleDeduction.confidence });
+                } else if (roleDeduction && roleDeduction.mostLikelyRole === 'doctor') {
+                    threats.push({ player, threat: 'doctor', confidence: roleDeduction.confidence });
+                } else {
+                    unknowns.push({ player, mafiaLikelihood });
+                }
+            } else {
+                // 시민 관점: 마피아는 위협, 시민은 아군
+                if (mafiaLikelihood > 70) {
+                    threats.push({ player, threat: 'suspected_mafia', confidence: mafiaLikelihood });
+                } else if (mafiaLikelihood < 30) {
+                    allies.push({ player, relationship: 'likely_citizen', confidence: 100 - mafiaLikelihood });
+                } else {
+                    unknowns.push({ player, mafiaLikelihood });
+                }
+            }
+        }
+
+        return { threats, allies, unknowns };
+    }
+
+    // 플레이어 프로필 생성
+    createPlayerProfile(player, analysis, bot) {
+        const profile = {
+            playerId: player.id,
+            playerName: player.name,
+            suspectedRole: 'unknown',
+            mafiaLikelihood: 0,
+            trustLevel: 50,
+            threatLevel: 0,
+            allyLevel: 0,
+            keyTraits: [],
+            votePriority: 0,
+            protectionPriority: 0,
+            investigationPriority: 0
+        };
+
+        // 마피아 가능성
+        if (analysis.mafiaEstimate.has(player.id)) {
+            profile.mafiaLikelihood = analysis.mafiaEstimate.get(player.id);
+        }
+
+        // 추론된 역할
+        if (analysis.roleDeductions.has(player.id)) {
+            const roleDeduction = analysis.roleDeductions.get(player.id);
+            profile.suspectedRole = roleDeduction.mostLikelyRole;
+            profile.keyTraits.push(...roleDeduction.reasons);
+        }
+
+        // 채팅 분석
+        if (analysis.chatAnalysis.has(player.id)) {
+            const chatAnalysis = analysis.chatAnalysis.get(player.id);
+            profile.trustLevel = chatAnalysis.trustworthiness;
+            profile.keyTraits.push(`채팅 신뢰도: ${chatAnalysis.trustworthiness}`);
+        }
+
+        // 위협/아군 관계
+        const relationship = analysis.threats.threats.find(t => t.player.id === player.id) ||
+                            analysis.threats.allies.find(a => a.player.id === player.id);
+        
+        if (relationship) {
+            if (relationship.threat) {
+                profile.threatLevel = relationship.confidence;
+                profile.keyTraits.push(`위협: ${relationship.threat}`);
+            } else if (relationship.relationship) {
+                profile.allyLevel = relationship.confidence;
+                profile.keyTraits.push(`아군: ${relationship.relationship}`);
+            }
+        }
+
+        // 우선순위 계산
+        profile.votePriority = this.calculateVotePriority(profile, bot);
+        profile.protectionPriority = this.calculateProtectionPriority(profile, bot);
+        profile.investigationPriority = this.calculateInvestigationPriority(profile, bot);
+
+        return profile;
+    }
+
+    // 투표 우선순위 계산 - 개선됨
+    calculateVotePriority(profile, bot) {
+        let priority = 0;
+
+        if (bot.role === 'mafia') {
+            // 마피아: 시민 진영 제거 우선
+            if (profile.suspectedRole === 'police') {
+                priority += 95; // 경찰 최우선 제거
+                console.log(`[마피아 우선순위] ${bot.name}: 경찰 ${profile.playerName} 최우선 타겟 (95)`);
+            } else if (profile.suspectedRole === 'doctor') {
+                priority += 85; // 의사 두 번째 우선순위
+                console.log(`[마피아 우선순위] ${bot.name}: 의사 ${profile.playerName} 우선 타겟 (85)`);
+            } else if (profile.allyLevel > 60) {
+                priority += 75; // 신뢰받는 시민
+                console.log(`[마피아 우선순위] ${bot.name}: 신뢰받는 시민 ${profile.playerName} 타겟 (75)`);
+            } else {
+                priority += Math.min(60, profile.trustLevel); // 일반 시민 (상한선 설정)
+            }
+        } else {
+            // 🚨 **핵심**: 시민은 경찰/의사를 절대 보호해야 함
+            if (profile.suspectedRole === 'police') {
+                priority = 0; // 경찰은 절대 투표하지 않음
+                console.log(`[경찰 완전 보호] ${bot.name}: ${profile.playerName}을 경찰로 확신, 투표 완전 제외`);
+            } else if (profile.suspectedRole === 'doctor') {
+                priority = 0; // 의사도 절대 투표하지 않음
+                console.log(`[의사 완전 보호] ${bot.name}: ${profile.playerName}을 의사로 확신, 투표 완전 제외`);
+            } else if (profile.keyTraits.includes('실제 조사 기록')) {
+                // 실제 조사 기록이 있는 플레이어는 절대 보호
+                priority = 0;
+                console.log(`[진짜 경찰 보호] ${bot.name}: ${profile.playerName}에게 조사 기록 있음, 완전 보호`);
+            } else if (profile.keyTraits.includes('조사 기록 + 정보 발표')) {
+                // 조사 기록 + 정보 발표자는 절대 보호
+                priority = 0;
+                console.log(`[확실한 경찰 보호] ${bot.name}: ${profile.playerName} 확실한 경찰, 완전 보호`);
+            } else if (profile.suspectedRole === 'mafia') {
+                // 마피아 의심자 우선 투표
+                priority += Math.min(90, profile.mafiaLikelihood + 20);
+                console.log(`[마피아 의심] ${bot.name}: ${profile.playerName} 마피아 의심 (+${priority})`);
+            } else if (profile.mafiaLikelihood > 60) {
+                // 높은 마피아 가능성
+                priority += profile.mafiaLikelihood;
+                console.log(`[높은 의심] ${bot.name}: ${profile.playerName} 높은 마피아 가능성 (+${priority})`);
+            } else if (profile.threatLevel > 50) {
+                // 위협적인 플레이어
+                priority += Math.min(40, profile.threatLevel);
+                console.log(`[위협 플레이어] ${bot.name}: ${profile.playerName} 위협적 (+${priority})`);
+            } else if (profile.trustLevel < 30) {
+                // 신뢰도 낮은 플레이어
+                priority += Math.min(30, 50 - profile.trustLevel);
+                console.log(`[신뢰도 낮음] ${bot.name}: ${profile.playerName} 신뢰도 낮음 (+${priority})`);
+            } else {
+                // 기본 우선순위 (매우 낮음)
+                priority = Math.max(5, 20 - profile.trustLevel);
+                console.log(`[기본 우선순위] ${bot.name}: ${profile.playerName} 기본 (+${priority})`);
+            }
+        }
+
+        return Math.max(0, Math.min(100, priority));
+    }
+
+    // 보호 우선순위 계산
+    calculateProtectionPriority(profile, bot) {
+        if (bot.role !== 'doctor') return 0;
+
+        let priority = 0;
+
+        if (profile.suspectedRole === 'police') priority += 80;
+        else if (profile.suspectedRole === 'doctor') priority += 70;
+        else if (profile.allyLevel > 60) priority += 60;
+        else priority += profile.trustLevel;
+
+        // 마피아 의심자는 보호 안 함
+        if (profile.mafiaLikelihood > 50) priority = 0;
+
+        return Math.max(0, Math.min(100, priority));
+    }
+
+    // 조사 우선순위 계산
+    calculateInvestigationPriority(profile, bot) {
+        if (bot.role !== 'police') return 0;
+
+        let priority = 0;
+
+        priority += profile.mafiaLikelihood;
+        if (profile.suspectedRole === 'unknown') priority += 20;
+        if (profile.threatLevel > 40) priority += 15;
+
+        // 이미 조사한 플레이어는 우선순위 낮음
+        // (실제 구현에서는 조사 히스토리 확인 필요)
+
+        return Math.max(0, Math.min(100, priority));
+    }
+
+    // 📊 개선된 투표 결정 시스템 (다양성 추가)
+    makeSmartVoteDecision(room, bot) {
+        const analysis = this.performAdvancedDeduction(room, bot);
+        if (!analysis) {
+            console.log(`[스마트 투표] ${bot.name}: 분석 실패, null 반환`);
+            return null;
+        }
+
+        let alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== bot.id);
+        
+        // 🚨 **핵심**: 마피아는 동료 마피아를 투표 대상에서 제외
+        if (bot.role === 'mafia') {
+            alivePlayers = alivePlayers.filter(p => p.role !== 'mafia');
+            console.log(`[마피아 동료 제외] ${bot.name}: 마피아 동료들을 투표 후보에서 제외`);
+        }
+        
+        const candidates = [];
+
+        // 각 봇에 고유한 성향 부여
+        const botPersonality = this.getBotPersonality(bot);
+        console.log(`[스마트 투표] ${bot.name} (${bot.role}): 성향 ${botPersonality.type} 적용`);
+
+        for (const player of alivePlayers) {
+            const profile = analysis.playerProfiles.get(player.id);
+            if (profile && profile.votePriority > 0) {
+                // 봇의 성향에 따라 우선순위 조정
+                const adjustedPriority = this.adjustPriorityByPersonality(profile.votePriority, profile, botPersonality);
+                
+                candidates.push({
+                    player: player,
+                    profile: profile,
+                    priority: adjustedPriority,
+                    reason: this.generateVoteReason(profile, bot)
+                });
+                
+                console.log(`[투표 후보] ${player.name}: 기본 ${profile.votePriority} → 조정 ${adjustedPriority}`);
+            }
+        }
+
+        // 우선순위에 따라 정렬
+        candidates.sort((a, b) => b.priority - a.priority);
+
+        // 강화된 다양성 확보 시스템
+        if (candidates.length > 0) {
+            const topPriority = candidates[0].priority;
+            // 더 넓은 다양성 범위 (상위 30% 또는 최소 15점 차이)
+            const diversityRange = Math.max(15, Math.floor(topPriority * 0.3));
+            const topCandidates = candidates.filter(c => c.priority >= topPriority - diversityRange);
+            
+            console.log(`[다양성 확보] 상위 그룹: ${topCandidates.length}명 (범위: ${topPriority - diversityRange}~${topPriority})`);
+            
+            // 추가 다양성 로직: 봇 ID 기반 선택 편향
+            const botIndex = this.hashString(bot.id) % topCandidates.length;
+            const diversityBonus = Math.floor(Math.random() * 10) - 5; // ±5 추가 무작위성
+            
+            let selectedCandidate;
+            if (topCandidates.length > 1) {
+                // 성향 선택 + 봇별 고유 선택 경향
+                selectedCandidate = this.selectByPersonality(topCandidates, botPersonality);
+                
+                // 20% 확률로 다른 후보 선택 (더 높은 무작위성)
+                if (Math.random() < 0.2) {
+                    const alternativeIndex = (botIndex + 1) % topCandidates.length;
+                    selectedCandidate = topCandidates[alternativeIndex];
+                    console.log(`[무작위 선택] ${bot.name}: 다양성을 위한 대안 선택`);
+                }
+            } else {
+                selectedCandidate = topCandidates[0];
+            }
+            
+            console.log(`[스마트 투표] ${bot.name} (${bot.role}): ${selectedCandidate.player.name} 선택 (우선순위: ${selectedCandidate.priority}, 이유: ${selectedCandidate.reason})`);
+            return selectedCandidate.player;
+        }
+
+        console.log(`[스마트 투표] ${bot.name}: 적합한 후보자 없음`);
+        return null;
+    }
+
+    // 봇 성향 시스템
+    getBotPersonality(bot) {
+        // 봇 이름의 해시를 기반으로 일관된 성향 부여
+        const nameHash = this.hashString(bot.name || bot.id);
+        const personalities = ['aggressive', 'cautious', 'analytical', 'intuitive', 'balanced'];
+        const personalityIndex = nameHash % personalities.length;
+        
+        const traits = {
+            aggressive: { riskTolerance: 0.8, suspicionThreshold: 0.6, preferredTarget: 'high_threat' },
+            cautious: { riskTolerance: 0.3, suspicionThreshold: 0.8, preferredTarget: 'safe_choice' },
+            analytical: { riskTolerance: 0.5, suspicionThreshold: 0.7, preferredTarget: 'logical_choice' },
+            intuitive: { riskTolerance: 0.7, suspicionThreshold: 0.5, preferredTarget: 'gut_feeling' },
+            balanced: { riskTolerance: 0.5, suspicionThreshold: 0.65, preferredTarget: 'balanced' }
+        };
+        
+        return {
+            type: personalities[personalityIndex],
+            ...traits[personalities[personalityIndex]]
+        };
+    }
+    
+    // 문자열 해시 함수
+    hashString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 32비트 정수 변환
+        }
+        return Math.abs(hash);
+    }
+    
+    // 성향에 따른 우선순위 조정
+    adjustPriorityByPersonality(basePriority, profile, personality) {
+        let adjustedPriority = basePriority;
+        
+        console.log(`[성향 조정] 봇 성향: ${personality.type}, 기본 우선순위: ${basePriority}`);
+        
+        // 성향별 조정
+        switch (personality.type) {
+            case 'aggressive':
+                // 공격적: 높은 위험도 선호, 확실한 의심 대상 우선
+                if (profile.mafiaLikelihood > 80) adjustedPriority += 15;
+                if (profile.threatLevel > 70) adjustedPriority += 12;
+                if (profile.mafiaLikelihood < 40) adjustedPriority -= 8;
+                break;
+                
+            case 'cautious':
+                // 신중한: 확실한 증거 선호, 안전한 선택
+                if (profile.mafiaLikelihood > 90) adjustedPriority += 20;
+                if (profile.trustLevel < 20) adjustedPriority += 10;
+                if (profile.mafiaLikelihood < 60) adjustedPriority -= 10;
+                break;
+                
+            case 'analytical':
+                // 분석적: 논리적 근거 선호
+                if (profile.keyTraits.includes('모순 발언')) adjustedPriority += 18;
+                if (profile.keyTraits.includes('정보 제공')) adjustedPriority += 12;
+                if (profile.keyTraits.includes('논리적 추리')) adjustedPriority += 10;
+                break;
+                
+            case 'intuitive':
+                // 직관적: 감정적 판단, 변화 선호
+                const randomFactor = (Math.random() - 0.5) * 20;
+                adjustedPriority += randomFactor;
+                if (profile.keyTraits.includes('방어적')) adjustedPriority += 12;
+                if (profile.keyTraits.includes('의심스런 행동')) adjustedPriority += 8;
+                break;
+                
+            case 'balanced':
+                // 균형잡힌: 종합적 판단
+                const avgScore = (profile.mafiaLikelihood + profile.threatLevel + (100 - profile.trustLevel)) / 3;
+                if (avgScore > 70) adjustedPriority += 10;
+                else if (avgScore > 50) adjustedPriority += 5;
+                else if (avgScore < 30) adjustedPriority -= 5;
+                break;
+        }
+        
+        // 성향별 차별화된 무작위 요소
+        let randomRange = 30; // 기본 범위
+        switch (personality.type) {
+            case 'aggressive':
+                randomRange = 25; // 더 일관된 선택
+                break;
+            case 'cautious':
+                randomRange = 20; // 신중한 선택
+                break;
+            case 'analytical':
+                randomRange = 15; // 논리적 선택
+                break;
+            case 'intuitive':
+                randomRange = 40; // 높은 변동성
+                break;
+            case 'balanced':
+                randomRange = 30; // 균형잡힌 변동성
+                break;
+        }
+        
+        const randomAdjustment = (Math.random() - 0.5) * randomRange;
+        adjustedPriority += randomAdjustment;
+        
+        // 최종 안전성 확인
+        const finalPriority = Math.max(0, Math.round(adjustedPriority));
+        
+        console.log(`[성향 조정] 조정된 우선순위: ${finalPriority}`);
+        
+        return finalPriority;
+    }
+    
+    // 성향에 따른 선택
+    selectByPersonality(candidates, personality) {
+        console.log(`[성향 선택] 성향: ${personality.type}, 후보자 수: ${candidates.length}`);
+        
+        // 후보자가 1명이면 그대로 반환
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
+        
+        switch (personality.type) {
+            case 'aggressive':
+                // 가장 위험한 대상 선택 (마피아 가능성 높은 순)
+                const aggressiveChoice = candidates.reduce((prev, curr) => 
+                    (curr.profile.mafiaLikelihood > prev.profile.mafiaLikelihood) ? curr : prev
+                );
+                console.log(`[성향 선택] 공격적 선택: ${aggressiveChoice.player.name}`);
+                return aggressiveChoice;
+                
+            case 'cautious':
+                // 가장 확실한 대상 선택 (90% 이상 확신할 때만)
+                const cautiousCandidates = candidates.filter(c => c.profile.mafiaLikelihood > 90);
+                if (cautiousCandidates.length > 0) {
+                    const cautiousChoice = cautiousCandidates[0];
+                    console.log(`[성향 선택] 신중한 선택: ${cautiousChoice.player.name}`);
+                    return cautiousChoice;
+                }
+                // 확실한 대상이 없으면 가장 높은 우선순위
+                console.log(`[성향 선택] 신중한 선택(fallback): ${candidates[0].player.name}`);
+                return candidates[0];
+                
+            case 'analytical':
+                // 가장 논리적 근거가 많은 대상 선택
+                const analyticalChoice = candidates.reduce((prev, curr) => 
+                    (curr.profile.keyTraits.length > prev.profile.keyTraits.length) ? curr : prev
+                );
+                console.log(`[성향 선택] 분석적 선택: ${analyticalChoice.player.name}`);
+                return analyticalChoice;
+                
+            case 'intuitive':
+                // 무작위 선택 (직감), 하지만 상위 50% 중에서만
+                const topHalf = candidates.slice(0, Math.ceil(candidates.length / 2));
+                const intuitiveChoice = topHalf[Math.floor(Math.random() * topHalf.length)];
+                console.log(`[성향 선택] 직관적 선택: ${intuitiveChoice.player.name}`);
+                return intuitiveChoice;
+                
+            case 'balanced':
+            default:
+                // 첫 번째 (가장 높은 우선순위)
+                console.log(`[성향 선택] 균형잡힌 선택: ${candidates[0].player.name}`);
+                return candidates[0];
+        }
+    }
+
+    // 투표 이유 생성
+    generateVoteReason(profile, bot) {
+        const reasons = [];
+        
+        if (profile.mafiaLikelihood > 70) reasons.push('마피아 의심');
+        if (profile.suspectedRole === 'mafia') reasons.push('마피아 역할 추정');
+        if (profile.threatLevel > 50) reasons.push('위협 인물');
+        if (profile.trustLevel < 30) reasons.push('신뢰도 낮음');
+        if (profile.keyTraits.includes('모순 발언')) reasons.push('발언 모순');
+        
+        return reasons.length > 0 ? reasons.join(', ') : '전략적 선택';
+    }
+
+    // 시민 봇 투표 전략 (개선됨)
+    chooseCitizenVoteTarget(room, citizenBot) {
+        console.log(`[시민 AI] ${citizenBot.name}: 고급 추리 시작`);
+        
+        // 고급 추리 시스템 사용
+        const smartChoice = this.makeSmartVoteDecision(room, citizenBot);
+        if (smartChoice) {
+            return smartChoice;
+        }
+
+        // 기존 로직 fallback
+        const analysis = this.analyzeGameState(room);
+        if (!analysis) return this.chooseRandomTarget(room, citizenBot, 'citizen');
+
+        console.log(`[시민 AI] ${citizenBot.name}: 기본 전략으로 전환`);
+        
+        const history = this.gameHistory.get(room.code);
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== citizenBot.id);
+
+        // 봇 성향을 기본 전략에도 적용
+        const botPersonality = this.getBotPersonality(citizenBot);
+        
+        // 의심도가 높은 플레이어 (성향별 임계값 조정)
+        let suspicionThreshold = 20;
+        if (botPersonality.type === 'aggressive') suspicionThreshold = 15;
+        else if (botPersonality.type === 'cautious') suspicionThreshold = 35;
+        else if (botPersonality.type === 'analytical') suspicionThreshold = 25;
+        
+        const suspiciousPlayers = analysis.suspiciousPlayers.filter(p => 
+            p.player.id !== citizenBot.id && p.suspicion > suspicionThreshold
+        );
+
+        if (suspiciousPlayers.length > 0) {
+            // 🚨 **핵심**: 경찰/의사로 추정되는 플레이어는 제외
+            const history = this.gameHistory.get(room.code);
+            const filteredSuspiciousPlayers = suspiciousPlayers.filter(p => {
+                // 경찰 추정: 조사 결과 발표, 정보 제공 패턴
+                if (history && history.playerStatements && history.playerStatements.has(p.player.id)) {
+                    const statements = history.playerStatements.get(p.player.id);
+                    const hasInvestigationClaims = statements.informationClaims.length > 0;
+                    const hasPoliceRoleClaim = statements.roleClaims.some(claim => claim.role === 'police');
+                    
+                    if (hasInvestigationClaims || hasPoliceRoleClaim) {
+                        console.log(`[경찰 보호] ${citizenBot.name}: ${p.player.name}을 경찰로 추정, 투표 제외`);
+                        return false;
+                    }
+                }
+                return true;
+            });
+            
+            if (filteredSuspiciousPlayers.length > 0) {
+                // 다양성을 위한 선택 (항상 첫 번째가 아닌)
+                const randomIndex = Math.floor(Math.random() * Math.min(3, filteredSuspiciousPlayers.length));
+                const target = filteredSuspiciousPlayers[randomIndex].player;
+                console.log(`[시민 AI] ${citizenBot.name}: 의심스러운 플레이어 ${target.name} 투표 선택 (의심도: ${filteredSuspiciousPlayers[randomIndex].suspicion})`);
+                return target;
+            }
+        }
+
+        // 신뢰도가 낮은 플레이어 (경찰/의사 제외)
+        const lowTrustPlayers = analysis.trustedPlayers.filter(p => {
+            if (p.player.id === citizenBot.id || p.trust >= 45) return false;
+            
+            // 경찰 추정: 조사 결과 발표, 정보 제공 패턴 (재확인)
+            if (history && history.playerStatements && history.playerStatements.has(p.player.id)) {
+                const statements = history.playerStatements.get(p.player.id);
+                const hasInvestigationClaims = statements.informationClaims.length > 0;
+                const hasPoliceRoleClaim = statements.roleClaims.some(claim => claim.role === 'police');
+                
+                if (hasInvestigationClaims || hasPoliceRoleClaim) {
+                    console.log(`[경찰 보호] ${citizenBot.name}: ${p.player.name}을 경찰로 추정, 신뢰도 낮아도 투표 제외`);
+                    return false;
+                }
+            }
+            return true;
+        }).sort((a, b) => a.trust - b.trust);
+
+        if (lowTrustPlayers.length > 0) {
+            // 다양성을 위한 선택
+            const randomIndex = Math.floor(Math.random() * Math.min(2, lowTrustPlayers.length));
+            const target = lowTrustPlayers[randomIndex].player;
+            console.log(`[시민 AI] ${citizenBot.name}: 신뢰도 낮은 플레이어 ${target.name} 투표 선택 (신뢰도: ${lowTrustPlayers[randomIndex].trust})`);
+            return target;
+        }
+
+        // 무작위 선택
+        console.log(`[시민 AI] ${citizenBot.name}: 전략적 대상 없음, 무작위 선택`);
+        return this.chooseRandomTarget(room, citizenBot, 'citizen');
+    }
+
+    // 마피아 봇 투표 전략 (개선됨)
+    chooseMafiaVoteTarget(room, mafiaBot) {
+        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 고급 추리 시작`);
+        
+        // 🚨 **핵심**: 다른 마피아는 절대 투표하면 안됨
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== mafiaBot.id);
+        const mafiaPlayers = alivePlayers.filter(p => p.role === 'mafia');
+        const nonMafiaPlayers = alivePlayers.filter(p => p.role !== 'mafia');
+        
+        console.log(`[마피아 동료 보호] ${mafiaBot.name}: 마피아 동료 ${mafiaPlayers.length}명 보호`);
+        
+        // 고급 추리 시스템 사용 (마피아가 아닌 플레이어만 대상)
+        const smartChoice = this.makeSmartVoteDecision(room, mafiaBot);
+        if (smartChoice && smartChoice.role !== 'mafia') {
+            console.log(`[마피아 스마트 선택] ${mafiaBot.name}: ${smartChoice.name} 선택`);
+            return smartChoice;
+        }
+
+        // 기존 로직 fallback
+        const analysis = this.analyzeGameState(room);
+        if (!analysis) return this.chooseRandomTarget(room, mafiaBot, 'mafia');
+
+        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 기본 전략으로 전환`);
+        
+        const history = this.gameHistory.get(room.code);
+
+        // 봇 성향을 기본 전략에도 적용
+        const botPersonality = this.getBotPersonality(mafiaBot);
+        
+        // 우선순위 1: 역할 주장자 (경찰, 의사 주장) 제거 (마피아 제외)
+        if (history && history.playerStatements) {
+            const roleClaimTargets = [];
+            
+            for (const player of alivePlayers) {
+                const playerData = history.playerStatements.get(player.id);
+                if (playerData && playerData.roleClaims) {
+                    const dangerousClaims = playerData.roleClaims.filter(claim => 
+                        claim.role === 'police' || claim.role === 'doctor'
+                    );
+                    if (dangerousClaims.length > 0) {
+                        roleClaimTargets.push({
+                            player: player,
+                            claimedRole: dangerousClaims[0].role,
+                            claimCount: dangerousClaims.length
+                        });
+                    }
+                }
+            }
+
+            if (roleClaimTargets.length > 0) {
+                // 경찰 주장자 우선, 그 다음 의사 주장자
+                const policeClaimants = roleClaimTargets.filter(t => t.claimedRole === 'police');
+                const doctorClaimants = roleClaimTargets.filter(t => t.claimedRole === 'doctor');
+                
+                let target = null;
+                if (policeClaimants.length > 0) {
+                    target = policeClaimants[0].player;
+                    console.log(`[마피아 투표 AI] ${mafiaBot.name}: 경찰 주장자 ${target.name} 투표 선택`);
+                } else if (doctorClaimants.length > 0) {
+                    target = doctorClaimants[0].player;
+                    console.log(`[마피아 투표 AI] ${mafiaBot.name}: 의사 주장자 ${target.name} 투표 선택`);
+                }
+                
+                if (target) return target;
+            }
+        }
+
+        // 우선순위 2: 신뢰도 높은 시민 (영향력 있는 플레이어)
+        const trustedCitizens = analysis.trustedPlayers.filter(p => 
+            p.player.id !== mafiaBot.id && p.trust > 60
+        );
+
+        if (trustedCitizens.length > 0) {
+            const target = trustedCitizens[0].player;
+            console.log(`[마피아 투표 AI] ${mafiaBot.name}: 신뢰받는 시민 ${target.name} 투표 선택 (신뢰도: ${trustedCitizens[0].trust})`);
+            return target;
+        }
+
+        // 우선순위 3: 무고한 시민 (마피아가 아닌 플레이어)
+        const innocentPlayers = alivePlayers.filter(p => p.role !== 'mafia');
+        if (innocentPlayers.length > 0) {
+            const target = innocentPlayers[Math.floor(Math.random() * innocentPlayers.length)];
+            console.log(`[마피아 투표 AI] ${mafiaBot.name}: 무고한 시민 ${target.name} 투표 선택 (의심도: 0)`);
+            return target;
+        }
+
+        // 마지막 수단: 무작위 선택
+        console.log(`[마피아 투표 AI] ${mafiaBot.name}: 전략적 대상 없음, 무작위 선택`);
+        return this.chooseRandomTarget(room, mafiaBot, 'mafia');
+    }
+
+    // 📊 보조 함수들 (고급 추리 시스템)
+
+    // 밤 생존 점수 계산
+    calculateNightSurvivalScore(playerId, history) {
+        let score = 0;
+        let nightsAlive = 0;
+        let totalNights = 0;
+        
+        for (const round of history.rounds) {
+            if (round.nightDeaths) {
+                totalNights++;
+                if (!round.nightDeaths.includes(playerId)) {
+                    nightsAlive++;
+                }
+            }
+        }
+        
+        if (totalNights > 0) {
+            const survivalRate = nightsAlive / totalNights;
+            // 생존율이 높을수록 마피아 가능성 증가
+            if (survivalRate > 0.7) score += 30;
+            else if (survivalRate > 0.5) score += 15;
+        }
+        
+        return score;
+    }
+
+    // 투표 점수 계산
+    calculateVotingScore(playerId, history) {
+        let score = 0;
+        let votedForMafia = 0;
+        let votedForCitizen = 0;
+        let totalVotes = 0;
+        
+        for (const round of history.rounds) {
+            if (round.votes && round.votes[playerId]) {
+                totalVotes++;
+                const target = round.votes[playerId];
+                
+                if (round.eliminated && round.eliminated.id === target) {
+                    if (round.eliminated.role === 'mafia') {
+                        votedForMafia++;
+                    } else {
+                        votedForCitizen++;
+                    }
+                }
+            }
+        }
+        
+        if (totalVotes > 0) {
+            // 시민을 더 많이 투표한 경우 마피아 가능성 증가
+            if (votedForCitizen > votedForMafia) {
+                score += 20;
+            }
+            
+            // 마피아를 투표한 적이 거의 없는 경우
+            if (votedForMafia === 0 && totalVotes > 1) {
+                score += 15;
+            }
+        }
+        
+        return score;
+    }
+
+    // 기만 점수 계산
+    calculateDeceptionScore(playerId, history) {
+        let score = 0;
+        
+        if (history.playerStatements && history.playerStatements.has(playerId)) {
+            const statements = history.playerStatements.get(playerId);
+            
+            // 모순 발언
+            if (statements.contradictions && statements.contradictions.length > 0) {
+                score += statements.contradictions.length * 10;
+            }
+            
+            // 거짓 정보 주장
+            if (statements.informationClaims) {
+                for (const claim of statements.informationClaims) {
+                    if (claim.type === 'investigation') {
+                        // 경찰이 아닌데 조사 정보 주장
+                        const isPolice = statements.roleClaims.some(rc => rc.role === 'police');
+                        if (!isPolice) {
+                            score += 25;
+                        }
+                    }
+                }
+            }
+            
+            // 과도한 방어적 발언
+            if (statements.defensiveStatements && statements.defensiveStatements.length > 2) {
+                score += statements.defensiveStatements.length * 5;
+            }
+        }
+        
+        return score;
+    }
+
+    // 일관성 점수 계산
+    calculateInconsistencyScore(playerId, history) {
+        let score = 0;
+        
+        if (history.playerStatements && history.playerStatements.has(playerId)) {
+            const statements = history.playerStatements.get(playerId);
+            
+            // 역할 주장 변경
+            if (statements.roleClaims && statements.roleClaims.length > 1) {
+                const uniqueRoles = new Set(statements.roleClaims.map(rc => rc.role));
+                if (uniqueRoles.size > 1) {
+                    score += 30; // 역할 주장 변경은 큰 감점
+                }
+            }
+            
+            // 의심 대상 변경 패턴
+            if (statements.suspicionClaims && statements.suspicionClaims.length > 0) {
+                const targets = statements.suspicionClaims.map(sc => sc.target);
+                const uniqueTargets = new Set(targets);
+                if (uniqueTargets.size > 2) {
+                    score += 10; // 너무 많은 사람을 의심
+                }
+            }
+        }
+        
+        return score;
+    }
+
+    // 조사 결과 조회 - 개선됨
+    getInvestigationResults(playerId, history) {
+        const results = [];
+        
+        // 1. 현재 라운드에서 조사 결과 확인
+        if (history.currentRound && history.currentRound.investigations) {
+            for (const investigation of history.currentRound.investigations) {
+                if (investigation.target === playerId) {
+                    results.push(investigation);
+                }
+            }
+        }
+        
+        // 2. 완료된 라운드들에서 조사 결과 확인
+        for (const round of history.rounds) {
+            if (round.investigations) {
+                for (const investigation of round.investigations) {
+                    if (investigation.target === playerId) {
+                        results.push(investigation);
+                    }
+                }
+            }
+        }
+        
+        return results;
+    }
+
+    // 플레이어 역할 주장 조회
+    getPlayerRoleClaims(playerId, history) {
+        if (history.playerStatements && history.playerStatements.has(playerId)) {
+            const statements = history.playerStatements.get(playerId);
+            return statements.roleClaims || [];
+        }
+        return [];
+    }
+
+    // 역할 주장 검증
+    verifyRoleClaim(playerId, claim, history) {
+        let credibility = 50; // 기본 신뢰도
+        
+        // 경찰 주장 검증
+        if (claim.role === 'police') {
+            // 실제로 조사 결과를 발표했는지 확인
+            const statements = history.playerStatements.get(playerId);
+            if (statements && statements.informationClaims) {
+                const investigationClaims = statements.informationClaims.filter(ic => ic.type === 'investigation');
+                if (investigationClaims.length > 0) {
+                    credibility += 30; // 조사 결과 발표
+                }
+            }
+            
+            // 실제 조사 기록과 비교
+            const actualInvestigations = [];
+            for (const round of history.rounds) {
+                if (round.investigations) {
+                    for (const investigation of round.investigations) {
+                        if (investigation.investigator === playerId) {
+                            actualInvestigations.push(investigation);
+                        }
+                    }
+                }
+            }
+            
+            if (actualInvestigations.length > 0) {
+                credibility += 40; // 실제 조사 기록 존재
+            }
+        }
+        
+        // 의사 주장 검증
+        if (claim.role === 'doctor') {
+            // 치료/보호 관련 발언 확인
+            const statements = history.playerStatements.get(playerId);
+            if (statements && statements.informationClaims) {
+                const healingClaims = statements.informationClaims.filter(ic => ic.type === 'healing');
+                if (healingClaims.length > 0) {
+                    credibility += 20;
+                }
+            }
+        }
+        
+        return Math.max(0, Math.min(100, credibility));
+    }
+
+    // 행동 패턴으로 역할 분석
+    analyzeBehaviorForRole(playerId, history) {
+        const analysis = {
+            suspectedRole: 'unknown',
+            confidence: 0,
+            reasons: []
+        };
+        
+        // 투표 패턴 분석
+        let votedForMafia = 0;
+        let votedForCitizen = 0;
+        
+        for (const round of history.rounds) {
+            if (round.votes && round.votes[playerId]) {
+                const target = round.votes[playerId];
+                if (round.eliminated && round.eliminated.id === target) {
+                    if (round.eliminated.role === 'mafia') {
+                        votedForMafia++;
+                    } else {
+                        votedForCitizen++;
+                    }
+                }
+            }
+        }
+        
+        // 마피아 패턴: 시민을 더 많이 투표
+        if (votedForCitizen > votedForMafia && votedForCitizen > 1) {
+            analysis.suspectedRole = 'mafia';
+            analysis.confidence = 60;
+            analysis.reasons.push('시민 대상 투표 패턴');
+        }
+        
+        // 시민 패턴: 마피아를 찾으려 노력
+        if (votedForMafia > 0 && votedForMafia >= votedForCitizen) {
+            analysis.suspectedRole = 'citizen';
+            analysis.confidence = 50;
+            analysis.reasons.push('마피아 찾기 노력');
+        }
+        
+        return analysis;
+    }
+
+    // 정보 가치 분석
+    analyzeInformationValue(statements) {
+        let value = 0;
+        
+        if (statements.informationClaims) {
+            value += statements.informationClaims.length * 10;
+        }
+        
+        if (statements.roleClaims) {
+            value += statements.roleClaims.length * 5;
+        }
+        
+        return Math.min(50, value);
+    }
+
+    // 방어적 행동 분석
+    analyzeDefensiveBehavior(statements) {
+        let defensiveness = 0;
+        
+        if (statements.defensiveStatements) {
+            defensiveness += statements.defensiveStatements.length * 10;
+        }
+        
+        return Math.min(50, defensiveness);
+    }
+
+    // 의심스러운 행동 분석
+    analyzeSuspiciousBehavior(statements) {
+        let suspicion = 0;
+        
+        if (statements.contradictions) {
+            suspicion += statements.contradictions.length * 15;
+        }
+        
+        // 너무 많은 사람 의심
+        if (statements.suspicionClaims && statements.suspicionClaims.length > 3) {
+            suspicion += 20;
+        }
+        
+        return Math.min(50, suspicion);
+    }
+
+    // 종합 신뢰도 계산
+    calculateOverallTrustworthiness(playerAnalysis) {
+        let trustworthiness = 50; // 기본값
+        
+        trustworthiness += playerAnalysis.informativeness * 0.3;
+        trustworthiness -= playerAnalysis.defensiveness * 0.4;
+        trustworthiness -= playerAnalysis.suspiciousness * 0.5;
+        trustworthiness += playerAnalysis.consistency * 0.2;
+        
+        return Math.max(0, Math.min(100, trustworthiness));
+    }
+
+    // 🆕 봇인지 확인하는 헬퍼 함수
+    isBot(playerId, room) {
+        return room.bots.has(playerId);
+    }
+
+    // 🆕 반응형 봇 채팅 트리거
+    triggerReactiveBotChats(room, chatMessage) {
+        const aliveBots = Array.from(room.bots.values()).filter(bot => bot.alive);
+        if (!aliveBots.length) return;
+
+        // 메시지 분석 - 누구를 타겟으로 하는 발언인지 확인
+        const targetedBots = this.findTargetedBots(chatMessage, room, aliveBots);
+        
+        if (targetedBots.length > 0) {
+            // 타겟이 된 봇들이 응답
+            targetedBots.forEach((bot, index) => {
+                const delay = 2000 + (index * 1000) + Math.random() * 2000; // 2-5초 사이 응답
+                
+                setTimeout(() => {
+                    if (room.gameState === chatMessage.gamePhase && bot.alive) {
+                        const responseMessage = this.generateReactiveResponse(room, bot, chatMessage);
+                        if (responseMessage) {
+                            console.log(`[반응형 채팅] ${bot.name}: "${chatMessage.message}"에 대한 응답 생성`);
+                            
+                            // 반응형 채팅 메시지 전송
+                            this.addChatMessage(room.code, {
+                                type: 'player',
+                                playerId: bot.id,
+                                playerName: bot.name,
+                                message: responseMessage,
+                                round: room.round,
+                                gamePhase: room.gameState
+                            }, room);
+
+                            io.to(room.code).emit('chatMessage', {
+                                type: 'player',
+                                playerName: bot.name,
+                                message: responseMessage,
+                                timestamp: new Date()
+                            });
+                        }
+                    }
+                }, delay);
+            });
+        } else {
+            // 일반적인 발언에 대한 확률적 반응 (20% 확률)
+            if (Math.random() < 0.2 && (room.gameState === 'discussion' || room.gameState === 'voting')) {
+                const randomBot = aliveBots[Math.floor(Math.random() * aliveBots.length)];
+                const delay = 3000 + Math.random() * 4000; // 3-7초 사이 응답
+                
+                setTimeout(() => {
+                    if (room.gameState === chatMessage.gamePhase && randomBot.alive) {
+                        const responseMessage = this.generateGeneralResponse(room, randomBot, chatMessage);
+                        if (responseMessage) {
+                            console.log(`[일반 반응] ${randomBot.name}: 일반적인 반응 생성`);
+                            
+                            this.addChatMessage(room.code, {
+                                type: 'player',
+                                playerId: randomBot.id,
+                                playerName: randomBot.name,
+                                message: responseMessage,
+                                round: room.round,
+                                gamePhase: room.gameState
+                            }, room);
+
+                            io.to(room.code).emit('chatMessage', {
+                                type: 'player',
+                                playerName: randomBot.name,
+                                message: responseMessage,
+                                timestamp: new Date()
+                            });
+                        }
+                    }
+                }, delay);
+            }
+        }
+    }
+
+    // 🆕 타겟이 된 봇들 찾기
+    findTargetedBots(chatMessage, room, aliveBots) {
+        const message = chatMessage.message.toLowerCase();
+        const targetedBots = [];
+        
+        // 1. 직접 이름 언급
+        for (const bot of aliveBots) {
+            if (message.includes(bot.name.toLowerCase())) {
+                targetedBots.push(bot);
+            }
+        }
+        
+        // 2. 특정 패턴의 질문이나 비난
+        const accusationPatterns = [
+            /너.*거짓말/,
+            /넌.*거짓말/,
+            /왜.*의심/,
+            /너.*의심/,
+            /넌.*의심/,
+            /너.*마피아/,
+            /넌.*마피아/,
+            /너.*이상/,
+            /넌.*이상/,
+            /너.*수상/,
+            /넌.*수상/,
+            /대답해/,
+            /설명해/,
+            /해명해/
+        ];
+        
+        // 패턴 매칭으로 타겟이 된 봇 찾기 (이름 언급이 없는 경우)
+        if (targetedBots.length === 0) {
+            for (const pattern of accusationPatterns) {
+                if (pattern.test(message)) {
+                    // 가장 최근에 발언한 봇을 타겟으로 선정
+                    const recentBotMessages = this.getRecentBotMessages(room, 3);
+                    if (recentBotMessages.length > 0) {
+                        const recentBot = aliveBots.find(bot => bot.id === recentBotMessages[0].playerId);
+                        if (recentBot && !targetedBots.includes(recentBot)) {
+                            targetedBots.push(recentBot);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        
+        return targetedBots;
+    }
+
+    // 🆕 최근 봇 메시지 가져오기
+    getRecentBotMessages(room, count = 5) {
+        const history = this.gameHistory.get(room.code);
+        if (!history) return [];
+        
+        return history.chatHistory
+            .filter(msg => msg.type === 'player' && this.isBot(msg.playerId, room))
+            .slice(-count)
+            .reverse(); // 최신 메시지부터
+    }
+
+    // 🆕 반응형 응답 생성
+    generateReactiveResponse(room, bot, originalMessage) {
+        const message = originalMessage.message.toLowerCase();
+        const senderName = originalMessage.playerName;
+        
+        // 역할별 방어 전략
+        switch (bot.role) {
+            case 'mafia':
+                return this.generateMafiaDefense(room, bot, message, senderName);
+            case 'police':
+                return this.generatePoliceDefense(room, bot, message, senderName);
+            case 'doctor':
+                return this.generateDoctorDefense(room, bot, message, senderName);
+            case 'citizen':
+                return this.generateCitizenDefense(room, bot, message, senderName);
+            default:
+                return this.generateGenericDefense(bot, message, senderName);
+        }
+    }
+
+    // 🆕 마피아 봇 방어 응답 (감정적이고 자연스러운 말투)
+    generateMafiaDefense(room, bot, message, senderName) {
+        const responses = [];
+        
+        if (message.includes('거짓말') || message.includes('마피아')) {
+            // 화나고 억울한 말투
+            responses.push(`야 ${senderName} 뭔 소리야? 나 시민이라고!`);
+            responses.push(`아니 증거도 없으면서 그렇게 말하면 어떡해?`);
+            responses.push(`진짜 미치겠네... 나 진짜 시민이야`);
+            responses.push(`${senderName} 너가 더 의심스럽다고`);
+            responses.push(`아 진짜 억울하네, 나 정말 마피아 아니야!`);
+            responses.push(`어이없어... 나 시민인데 왜 이래?`);
+            responses.push(`말도 안 돼, 난 마피아 찾으려고 노력하고 있다고`);
+            responses.push(`아니 나보고 마피아라고? 진짜?? 말이 돼??`);
+        } else if (message.includes('의심') || message.includes('이상')) {
+            // 방어적이지만 자연스러운 말투
+            responses.push(`나 왜 의심해? 뭘 잘못했는데?`);
+            responses.push(`아 진짜... 나 시민이라니까?`);
+            responses.push(`${senderName} 너 지금 뭐하는 거야?`);
+            responses.push(`시민끼리 왜 싸워... 마피아만 좋아한다`);
+            responses.push(`이상한 건 너야 너!`);
+            responses.push(`아니 내가 뭘 어떻게 했다고...`);
+        } else if (message.includes('설명') || message.includes('해명')) {
+            // 짜증나는 말투
+            responses.push(`뭘 설명하라는 거야? 나 시민이야!`);
+            responses.push(`아니 설명할 게 뭐가 있어?`);
+            responses.push(`너부터 설명해봐`);
+            responses.push(`할 말 없어, 그냥 나 시민이야`);
+            responses.push(`뭔 설명? 나 그냥 게임하고 있었는데?`);
+        }
+        
+        return responses.length > 0 ? responses[Math.floor(Math.random() * responses.length)] : null;
+    }
+
+    // 🆕 경찰 봇 방어 응답 (확신에 찬 자연스러운 말투)
+    generatePoliceDefense(room, bot, message, senderName) {
+        const responses = [];
+        
+        if (message.includes('거짓말') || message.includes('마피아')) {
+            // 확신에 차지만 화난 말투
+            responses.push(`야 나 경찰이야! 조사 결과 믿어!`);
+            responses.push(`${senderName} 진짜 미쳤나? 나 경찰이라고!`);
+            responses.push(`마피아가 경찰 의심하게 만드는 거 아니야?`);
+            responses.push(`아니 내 조사 결과 봤지? 왜 날 의심해?`);
+            responses.push(`진짜 어이없네... 경찰한테 뭔 짓이야`);
+            responses.push(`나 경찰이야! 정신 차려!`);
+            responses.push(`아 진짜 답답해, 나 경찰이라니까!`);
+            responses.push(`조사 결과 다시 봐봐! 나 경찰이야!`);
+        } else if (message.includes('의심')) {
+            // 답답하고 짜증나는 말투
+            responses.push(`나 경찰이라고 했잖아!`);
+            responses.push(`경찰 의심하면 마피아만 좋아해`);
+            responses.push(`내 조사 결과가 틀렸다는 거야?`);
+            responses.push(`아 진짜... 경찰을 왜 의심해?`);
+            responses.push(`나 믿어야지, 경찰인데`);
+            responses.push(`시민이면 경찰 편 들어야지!`);
+        }
+        
+        return responses.length > 0 ? responses[Math.floor(Math.random() * responses.length)] : null;
+    }
+
+    // 🆕 의사 봇 방어 응답 (온화하지만 자연스러운 말투)
+    generateDoctorDefense(room, bot, message, senderName) {
+        const responses = [];
+        
+        if (message.includes('거짓말') || message.includes('마피아')) {
+            // 온화하지만 당황한 말투
+            responses.push(`나 의사야... 사람들 치료하고 있는데`);
+            responses.push(`${senderName} 의사를 왜 의심해?`);
+            responses.push(`아니야, 나 시민 보호하는 역할이라고`);
+            responses.push(`진짜? 나 의사인데... 믿어줘`);
+            responses.push(`어떻게 의사를 의심할 수가 있어?`);
+            responses.push(`나 사람 살리는 일 하고 있어!`);
+            responses.push(`아니 의사가 마피아라고? 말이 돼?`);
+        } else if (message.includes('의심')) {
+            // 착하지만 서운한 말투
+            responses.push(`의사를 왜 의심해?`);
+            responses.push(`나 모든 사람 살리려고 노력하는데...`);
+            responses.push(`아니야, 나 의사야`);
+            responses.push(`좀 믿어줘, 나 의사라고`);
+            responses.push(`왜 그래? 나 나쁜 사람 아니야`);
+        }
+        
+        return responses.length > 0 ? responses[Math.floor(Math.random() * responses.length)] : null;
+    }
+
+    // 🆕 시민 봇 방어 응답 (평범하고 자연스러운 말투)
+    generateCitizenDefense(room, bot, message, senderName) {
+        const responses = [];
+        
+        if (message.includes('거짓말') || message.includes('마피아')) {
+            // 억울하고 당황한 일반인 말투
+            responses.push(`나 시민이야! 왜 날 의심해?`);
+            responses.push(`${senderName} 증거가 있어?`);
+            responses.push(`나도 마피아 찾고 있다고!`);
+            responses.push(`시민끼리 싸우면 안 되잖아`);
+            responses.push(`아니 왜 나야? 나 시민이라고!`);
+            responses.push(`진짜 어이없다... 나 마피아 아니야`);
+            responses.push(`아 진짜 억울해! 나 시민이야!`);
+            responses.push(`말도 안 돼, 나 평범한 시민이라고`);
+        } else if (message.includes('의심')) {
+            // 방어적이고 자연스러운 말투
+            responses.push(`뭐가 의심스러운데?`);
+            responses.push(`내가 뭘 잘못했어?`);
+            responses.push(`${senderName} 너가 더 의심스럽다`);
+            responses.push(`아니 왜 날 의심해?`);
+            responses.push(`나 그냥 게임하고 있었는데...`);
+            responses.push(`억울하네 진짜`);
+        }
+        
+        return responses.length > 0 ? responses[Math.floor(Math.random() * responses.length)] : null;
+    }
+
+    // 🆕 일반적인 방어 응답 (자연스러운 반말)
+    generateGenericDefense(bot, message, senderName) {
+        const responses = [
+            `${senderName} 왜 그렇게 생각해?`,
+            `나 아무 잘못한 거 없는데?`,
+            `근거 없이 의심하지 마`,
+            `다같이 마피아 찾아야지`,
+            `아니 왜 날 의심해?`,
+            `억울하네 진짜`,
+            `나 진짜 아무것도 안 했어`,
+            `뭔 소리야?`
+        ];
+        
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
+
+    // 🆕 일반적인 반응 생성 (타겟되지 않은 경우, 자연스러운 말투)
+    generateGeneralResponse(room, bot, originalMessage) {
+        const message = originalMessage.message.toLowerCase();
+        const senderName = originalMessage.playerName;
+        
+        // 특정 키워드에 대한 일반적인 반응
+        if (message.includes('마피아를 찾')) {
+            const responses = ['응, 같이 찾아보자', '맞아 마피아 찾아야 해', '그래 다같이 찾자'];
+            return responses[Math.floor(Math.random() * responses.length)];
+        } else if (message.includes('투표')) {
+            const responses = ['신중하게 투표해야지', '누구 투표할까?', '잘 생각해서 투표하자'];
+            return responses[Math.floor(Math.random() * responses.length)];
+        } else if (message.includes('의심')) {
+            const responses = ['누구 의심해?', '왜 의심스러워?', '뭔가 이상해?'];
+            return responses[Math.floor(Math.random() * responses.length)];
+        } else if (message.includes('경찰') || message.includes('조사')) {
+            const responses = ['경찰 조사 결과 중요하지', '경찰 믿어야 해', '조사 결과 어떻게 나왔어?'];
+            return responses[Math.floor(Math.random() * responses.length)];
+        } else if (message.includes('증거')) {
+            const responses = ['증거 있어야 확신할 수 있지', '무슨 증거 있어?', '증거 중요해'];
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+        
+        // 20% 확률로만 응답 (너무 많은 반응 방지)
+        const casualResponses = [
+            '그런가?', '음... 그렇네', '맞는 것 같아', '그런가 보네', 
+            '어떻게 생각해?', '흠...', '그럴 수도 있지', '모르겠어'
+        ];
+        return Math.random() < 0.2 ? casualResponses[Math.floor(Math.random() * casualResponses.length)] : null;
+    }
 }
 
 // 게임 상태 관리
@@ -1085,6 +4278,10 @@ class MafiaGame {
         this.players = new Map(); // socketId -> player info
         this.sessions = new Map(); // sessionId -> socketId (현재 연결된 세션)
         this.botAI = new BotAI(); // 봇 AI 시스템
+        
+        // 도배 방지 시스템
+        this.chatHistory = new Map(); // playerId -> [timestamps]
+        this.chatBans = new Map(); // playerId -> banEndTime
     }
 
     createRoom(roomCode, hostSocketId, hostName, sessionId) {
@@ -1268,14 +4465,22 @@ class MafiaGame {
             return null;
         }
 
+        console.log(`🚨🚨🚨 [GAME START] 방 ${roomCode} 게임 시작! 총 ${totalPlayers}명`);
+
         // 역할 배정
         this.assignRoles(room);
+        
+        console.log(`🚨🚨🚨 [AFTER ASSIGN] 역할 배정 완료, 가짜 경찰 확인:`, this.botAI.fakePoliceBots.get(roomCode));
+        
         room.gameStarted = true;
         room.gameState = 'night';
         room.round = 1;
 
-        // 봇 AI 히스토리 초기화
-        this.botAI.initializeRoomHistory(roomCode);
+        // 🔄 봇 지능 시스템 완전 초기화
+        console.log(`[게임 시작] ${roomCode}: 봇 지능 시스템 초기화`);
+        this.botAI.resetBotIntelligence(roomCode);
+
+        console.log(`🚨🚨🚨 [AFTER RESET] 리셋 후 가짜 경찰 확인:`, this.botAI.fakePoliceBots.get(roomCode));
 
         return room;
     }
@@ -1333,6 +4538,11 @@ class MafiaGame {
             console.log(`${player.name}: ${player.role}`);
         });
         console.log('===========================');
+        
+        // 🎭 마피아 봇 중 경찰 연기자 선택
+        console.log(`[DEBUG] assignRoles에서 가짜 경찰 선택 시도 중...`);
+        console.log(`[DEBUG] 현재 봇 목록:`, Array.from(room.bots.values()).map(bot => ({ name: bot.name, role: bot.role, alive: bot.alive })));
+        this.botAI.selectFakePoliceBot(room);
     }
 
     processNightPhase(roomCode) {
@@ -1365,6 +4575,7 @@ class MafiaGame {
                 const target = room.players.get(action.target) || room.bots.get(action.target);
                 
                 if (wizard && target) {
+                    // 역할 교환 항상 성공
                     const wizardRole = wizard.role;
                     const targetRole = target.role;
                     
@@ -1376,7 +4587,8 @@ class MafiaGame {
                         wizard: playerId,
                         target: action.target,
                         wizardNewRole: targetRole,
-                        targetNewRole: 'citizen'
+                        targetNewRole: 'citizen',
+                        success: true
                     };
                     
                     console.log(`마법사 ${wizard.name}이 ${target.name}과 직업을 교환했습니다. 마법사: ${wizardRole} → ${targetRole}, 타겟: ${targetRole} → citizen`);
@@ -1503,6 +4715,23 @@ class MafiaGame {
                 } else {
                     console.log(`마법사 봇 ${bot.name}: 교환할 대상이 없음`);
                 }
+            }
+        }
+        
+        // 🎭 가짜 경찰 봇의 거짓 조사 실행
+        const fakePoliceBotId = this.botAI.fakePoliceBots.get(room.code);
+        if (fakePoliceBotId) {
+            const fakePoliceBot = room.bots.get(fakePoliceBotId);
+            if (fakePoliceBot && fakePoliceBot.alive && fakePoliceBot.role === 'mafia') {
+                console.log(`[가짜 경찰 액션] ${fakePoliceBot.name}이 거짓 조사를 실행합니다.`);
+                const fakeInvestigation = this.botAI.generateFakeInvestigation(room, fakePoliceBotId);
+                if (fakeInvestigation) {
+                    console.log(`[가짜 경찰 액션] ${fakePoliceBot.name}: ${fakeInvestigation.targetName} → ${fakeInvestigation.result} (거짓 조사 완료)`);
+                } else {
+                    console.log(`[가짜 경찰 액션] ${fakePoliceBot.name}: 더 이상 조사할 대상이 없습니다.`);
+                }
+            } else {
+                console.log(`[가짜 경찰 액션] 가짜 경찰 봇이 죽었거나 존재하지 않습니다.`);
             }
         }
     }
@@ -1673,21 +4902,76 @@ class MafiaGame {
     getRoomList() {
         const publicRooms = [];
         for (const [roomCode, room] of this.rooms) {
-            // 게임이 시작되지 않은 방만 표시
-            if (!room.gameStarted) {
-                const totalPlayers = room.players.size + room.bots.size;
-                const hostPlayer = room.players.get(room.host);
-                
-                publicRooms.push({
-                    roomCode: roomCode,
-                    hostName: hostPlayer ? hostPlayer.name : '호스트',
-                    currentPlayers: totalPlayers,
-                    maxPlayers: room.maxPlayers,
-                    canJoin: totalPlayers < room.maxPlayers
-                });
-            }
+            const totalPlayers = room.players.size + room.bots.size;
+            const hostPlayer = room.players.get(room.host);
+            
+            // 게임 상태 정보
+            const gameStatus = room.gameStarted ? '플레이중' : '대기중';
+            const canJoin = !room.gameStarted && totalPlayers < room.maxPlayers;
+            
+            publicRooms.push({
+                roomCode: roomCode,
+                hostName: hostPlayer ? hostPlayer.name : '호스트',
+                currentPlayers: totalPlayers,
+                maxPlayers: room.maxPlayers,
+                gameStatus: gameStatus,
+                gameStarted: room.gameStarted,
+                canJoin: canJoin
+            });
         }
         return publicRooms;
+    }
+
+    // 도배 방지 시스템
+    isPlayerBanned(playerId) {
+        const banEndTime = this.chatBans.get(playerId);
+        if (!banEndTime) return false;
+        
+        const now = Date.now();
+        if (now >= banEndTime) {
+            this.chatBans.delete(playerId);
+            return false;
+        }
+        
+        return true;
+    }
+
+    checkSpamAndBan(playerId) {
+        const now = Date.now();
+        const threeSecondsAgo = now - 3000; // 3초 전
+        
+        // 플레이어의 채팅 히스토리 가져오기
+        let history = this.chatHistory.get(playerId);
+        if (!history) {
+            history = [];
+            this.chatHistory.set(playerId, history);
+        }
+        
+        // 3초 이전 메시지들 제거
+        const recentMessages = history.filter(timestamp => timestamp > threeSecondsAgo);
+        this.chatHistory.set(playerId, recentMessages);
+        
+        // 새 메시지 추가
+        recentMessages.push(now);
+        
+        // 3초 내에 5번 이상 메시지를 보냈는지 확인
+        if (recentMessages.length >= 5) {
+            // 10초간 채팅 금지
+            const banEndTime = now + 10000; // 10초 후
+            this.chatBans.set(playerId, banEndTime);
+            console.log(`[도배 방지] 플레이어 ${playerId} 채팅 금지 (10초간)`);
+            return true;
+        }
+        
+        return false;
+    }
+
+    getRemainingBanTime(playerId) {
+        const banEndTime = this.chatBans.get(playerId);
+        if (!banEndTime) return 0;
+        
+        const remaining = Math.max(0, banEndTime - Date.now());
+        return Math.ceil(remaining / 1000); // 초 단위로 반환
     }
 }
 
@@ -1916,7 +5200,12 @@ io.on('connection', (socket) => {
         
         room.nightActions.set(socket.id, { type: action, target, time: Date.now() });
         
-        socket.emit('actionConfirmed', { action, target });
+        // 행동 확인 알림 전송
+        console.log(`[행동 확인] ${player.name}이(가) ${action} 행동을 ${target}에게 선택`);
+        const targetPlayer = room.players.get(target) || room.bots.get(target);
+        const targetName = targetPlayer ? targetPlayer.name : target;
+        console.log(`[행동 상세] ${player.name}(${player.role}) -> ${targetName}으로 ${action} 행동`);
+        socket.emit('actionConfirmed', { action, target, playerName: player.name, targetName });
         
         // 마피아가 공격 대상을 선택했을 때 마피아 팀에게 알림
         if (action === 'kill' && player.role === 'mafia') {
@@ -1985,6 +5274,23 @@ io.on('connection', (socket) => {
         const player = room.players.get(socket.id);
         if (!player) return;
         
+        // 도배 방지 검사
+        if (game.isPlayerBanned(socket.id)) {
+            const remainingTime = game.getRemainingBanTime(socket.id);
+            socket.emit('chatError', {
+                message: `도배로 인해 ${remainingTime}초 동안 채팅이 금지되었습니다.`
+            });
+            return;
+        }
+        
+        // 도배 검사 (3초에 5번 이상이면 10초 금지)
+        if (game.checkSpamAndBan(socket.id)) {
+            socket.emit('chatError', {
+                message: '너무 빠르게 메시지를 보내고 있습니다. 10초 동안 채팅이 금지됩니다.'
+            });
+            return;
+        }
+        
         const { message } = data;
         const timestamp = new Date();
 
@@ -2016,6 +5322,78 @@ io.on('connection', (socket) => {
                 message,
                 timestamp
             });
+        }
+    });
+
+    // 마피아 전용 채팅 메시지
+    socket.on('mafiaChatMessage', (data) => {
+        const playerInfo = game.players.get(socket.id);
+        if (!playerInfo) return;
+        
+        const room = game.rooms.get(playerInfo.roomCode);
+        if (!room) return;
+        
+        const player = room.players.get(socket.id);
+        if (!player) return;
+        
+        // 마피아만 메시지를 보낼 수 있음
+        if (player.role !== 'mafia') {
+            console.log(`마피아 채팅 접근 거부: ${player.name} (역할: ${player.role})`);
+            return;
+        }
+        
+        // 살아있어야 하고, 밤 시간이어야 함
+        if (!player.alive || room.gameState !== 'night') {
+            console.log(`마피아 채팅 조건 불만족: alive=${player.alive}, gameState=${room.gameState}`);
+            return;
+        }
+        
+        // 도배 방지 검사
+        if (game.isPlayerBanned(socket.id)) {
+            const remainingTime = game.getRemainingBanTime(socket.id);
+            socket.emit('chatError', {
+                message: `도배로 인해 ${remainingTime}초 동안 채팅이 금지되었습니다.`
+            });
+            return;
+        }
+        
+        // 도배 검사 (3초에 5번 이상이면 10초 금지)
+        if (game.checkSpamAndBan(socket.id)) {
+            socket.emit('chatError', {
+                message: '너무 빠르게 메시지를 보내고 있습니다. 10초 동안 채팅이 금지됩니다.'
+            });
+            return;
+        }
+        
+        const { message } = data;
+        const timestamp = new Date();
+
+        // 마피아 채팅 메시지를 AI 히스토리에 저장 (특별 타입으로)
+        game.botAI.addChatMessage(playerInfo.roomCode, {
+            type: 'mafia_chat',
+            playerId: socket.id,
+            playerName: player.name,
+            message,
+            round: room.round,
+            gamePhase: room.gameState
+        }, room);
+
+        // 마피아 팀원들에게만 메시지 전송
+        const allPlayers = [...room.players.values(), ...room.bots.values()];
+        const mafiaMembers = allPlayers.filter(p => p.role === 'mafia' && p.alive);
+        
+        console.log(`마피아 채팅 전송: ${player.name} -> ${mafiaMembers.length}명의 마피아에게`);
+        
+        for (const mafia of mafiaMembers) {
+            // 봇이 아닌 플레이어에게만 전송
+            if (!mafia.isBot) {
+                io.to(mafia.id).emit('mafiaChatMessage', {
+                    type: 'mafia',
+                    playerName: player.name,
+                    message,
+                    timestamp
+                });
+            }
         }
     });
 
@@ -2092,7 +5470,7 @@ function startNightPhase(roomCode, room) {
     console.log('nightActions 초기화됨');
     
     room.gameState = 'night';
-    room.timeLeft = 15; // 15초 (추가 5초 감소)
+    room.timeLeft = 20; // 20초 (5초 증가)
     
     // 살아있는 플레이어들의 역할 확인
     const alivePlayers = game.getAlivePlayers(room);
@@ -2103,6 +5481,9 @@ function startNightPhase(roomCode, room) {
         timeLeft: room.timeLeft,
         round: room.round
     });
+    
+    // 마피아 봇들의 밤 시간 채팅 시작
+    game.botAI.triggerMafiaChats(room);
     
     // 봇들의 밤 행동을 지연시켜서 처리 (5-20초 사이에 랜덤하게)
     setTimeout(() => {
@@ -2128,10 +5509,21 @@ function startNightPhase(roomCode, room) {
 function endNightPhase(roomCode, room) {
     const results = game.processNightPhase(roomCode);
     
+    // results가 null인 경우 에러 방지
+    if (!results) {
+        console.error(`[에러] ${roomCode} 방의 밤 결과 처리가 실패했습니다.`);
+        room.gameState = 'morning';
+        io.to(roomCode).emit('phaseChange', {
+            phase: 'morning',
+            results: { killed: null, saved: null, investigated: null, roleSwapped: null }
+        });
+        return;
+    }
+    
     room.gameState = 'morning';
     
     // 마법사 역할 교환이 있었다면 해당 플레이어들에게 새로운 역할 정보 전송
-    if (results.roleSwapped) {
+    if (results.roleSwapped && results.roleSwapped.success) {
         const wizard = room.players.get(results.roleSwapped.wizard) || room.bots.get(results.roleSwapped.wizard);
         const target = room.players.get(results.roleSwapped.target) || room.bots.get(results.roleSwapped.target);
         
@@ -2201,6 +5593,15 @@ function endNightPhase(roomCode, room) {
             }
             console.log('마피아 팀 구성 변경으로 모든 마피아들에게 새로운 팀 정보 전송');
         }
+    } else if (results.roleSwapped && !results.roleSwapped.success) {
+        // 역할 교환 실패 메시지 (마법사에게만 전송)
+        if (room.players.has(results.roleSwapped.wizard)) {
+            io.to(results.roleSwapped.wizard).emit('nightActionResult', {
+                type: 'swapFailed',
+                message: '역할 교환에 실패했습니다.'
+            });
+        }
+        console.log(`마법사 역할 교환 실패 - 실제 플레이어에게 알림 전송`);
     }
     
     io.to(roomCode).emit('nightResults', results);
@@ -2215,6 +5616,9 @@ function endNightPhase(roomCode, room) {
         bots: Array.from(room.bots.values()),
         maxPlayers: room.maxPlayers
     });
+    
+    // 밤 결과를 room에 저장 (토론 시간에 사용)
+    room.lastNightResults = results;
     
     // 게임 종료 확인
     const gameEnd = game.checkGameEnd(room);
@@ -2235,12 +5639,16 @@ function startDiscussionPhase(roomCode, room) {
     }
     
     room.gameState = 'discussion';
-    room.timeLeft = 45; // 45초 (추가 5초 감소)
+    room.timeLeft = 40; // 40초 (5초 감소)
     
     io.to(roomCode).emit('phaseChange', {
         phase: 'discussion',
         timeLeft: room.timeLeft
     });
+    
+    // 봇들이 토론 시간에 채팅하도록 트리거 (밤 결과 포함)
+    const nightResults = room.lastNightResults || null;
+    game.botAI.triggerBotChats(room, 'discussion', { nightResults });
     
     room.timer = setInterval(() => {
         room.timeLeft--;
@@ -2269,6 +5677,9 @@ function startVotingPhase(roomCode, room) {
         phase: 'voting',
         timeLeft: room.timeLeft
     });
+    
+    // 봇들이 투표 시간에 채팅하도록 트리거
+    game.botAI.triggerBotChats(room, 'voting');
     
     // 봇들의 투표를 지연시켜서 처리 (5-15초 사이에 랜덤하게)
     setTimeout(() => {

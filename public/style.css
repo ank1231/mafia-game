@@ -266,6 +266,18 @@ input::placeholder {
     cursor: not-allowed;
 }
 
+.room-item.playing {
+    border-color: var(--accent-purple);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(139, 92, 246, 0.1) 100%);
+    cursor: not-allowed;
+}
+
+.room-item.playing:hover {
+    border-color: var(--accent-purple);
+    box-shadow: var(--glow-purple);
+    transform: none;
+}
+
 .room-info .room-name {
     font-weight: 600;
     color: var(--text-primary);
@@ -277,6 +289,14 @@ input::placeholder {
     gap: 16px;
     font-size: 12px;
     color: var(--text-muted);
+    flex-wrap: wrap;
+}
+
+.room-game-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
 }
 
 .room-status.available {
@@ -286,6 +306,11 @@ input::placeholder {
 
 .room-status.full {
     color: var(--text-muted);
+}
+
+.room-status.playing {
+    color: var(--accent-purple);
+    font-weight: 600;
 }
 
 /* 대기실 & 게임 화면 */
@@ -522,6 +547,12 @@ input::placeholder {
     opacity: 0.7;
 }
 
+.chat-message.mafia {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(190, 24, 93, 0.15) 100%);
+    border: 1px solid rgba(236, 72, 153, 0.4);
+    box-shadow: 0 0 10px rgba(236, 72, 153, 0.2);
+}
+
 .message-header {
     font-weight: 600;
     color: var(--accent-cyan);
@@ -536,6 +567,59 @@ input::placeholder {
 
 .chat-input input {
     flex: 1;
+}
+
+/* 마피아 전용 채팅 */
+.mafia-chat-section {
+    margin-top: 20px;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(190, 24, 93, 0.1) 100%);
+    border: 1px solid rgba(236, 72, 153, 0.3);
+    box-shadow: var(--glow-pink);
+}
+
+.mafia-chat-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-pink), #be185d);
+}
+
+.mafia-chat-section h3 {
+    color: var(--accent-pink);
+    text-shadow: var(--glow-pink);
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.mafia-chat-messages {
+    height: 200px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(236, 72, 153, 0.2);
+}
+
+.mafia-chat-section .chat-input input {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(236, 72, 153, 0.3);
+    color: var(--text-primary);
+}
+
+.mafia-chat-section .chat-input input:focus {
+    border-color: var(--accent-pink);
+    box-shadow: var(--glow-pink);
+}
+
+.mafia-chat-section .chat-input button {
+    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    border: none;
+    color: var(--text-primary);
+}
+
+.mafia-chat-section .chat-input button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--glow-pink);
 }
 
 /* 게임 액션 */
@@ -694,12 +778,53 @@ input::placeholder {
     right: 20px;
     background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
     color: var(--bg-primary);
-    padding: 12px 20px;
+    padding: 16px 24px;
     border-radius: 8px;
     font-weight: 600;
     box-shadow: var(--glow-cyan), 0 10px 30px rgba(0, 0, 0, 0.3);
     z-index: 1000;
-    animation: toastSlideIn 0.3s ease-out, toastSlideOut 0.3s ease-in 2.7s forwards;
+    animation: toastSlideIn 0.3s ease-out;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: max-content;
+    border: 1px solid var(--accent-cyan);
+    backdrop-filter: blur(10px);
+}
+
+.toast.success {
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+    border-color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan), 0 10px 30px rgba(0, 255, 255, 0.3);
+}
+
+.toast.error {
+    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    border-color: var(--accent-pink);
+    box-shadow: var(--glow-pink), 0 10px 30px rgba(236, 72, 153, 0.3);
+}
+
+.toast.warning {
+    background: linear-gradient(135deg, var(--accent-orange) 0%, #ea580c 100%);
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.5), 0 10px 30px rgba(249, 115, 22, 0.3);
+}
+
+.toast-icon {
+    font-size: 18px;
+    font-weight: bold;
+    min-width: 20px;
+    text-align: center;
+}
+
+.toast-icon:empty {
+    min-width: 0;
+    width: 0;
+    margin: 0;
+}
+
+.toast.no-icon {
+    gap: 0;
 }
 
 @keyframes toastSlideIn {

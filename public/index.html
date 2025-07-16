@@ -164,6 +164,16 @@
                         <input type="text" id="gameChatInput" placeholder="토론 중에만 채팅할 수 있습니다..." disabled maxlength="100">
                         <button id="sendGameChatBtn" disabled>전송</button>
                     </div>
+                    
+                    <!-- 마피아 전용 채팅 (밤 시간에만 표시) -->
+                    <div id="mafiaChat" class="mafia-chat-section" style="display: none;">
+                        <h3>🔴 마피아팀 대화</h3>
+                        <div id="mafiaChatMessages" class="chat-messages mafia-chat-messages"></div>
+                        <div class="chat-input">
+                            <input type="text" id="mafiaChatInput" placeholder="마피아팀 대화..." disabled maxlength="100">
+                            <button id="sendMafiaChatBtn" disabled>전송</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -209,6 +219,7 @@
 
     <!-- 알림 토스트 -->
     <div id="toast" class="toast hidden">
+        <span id="toastIcon" class="toast-icon"></span>
         <span id="toastMessage"></span>
     </div>
 

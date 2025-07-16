@@ -27,8 +27,20 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeSocket();
     setupEventListeners();
     setupAudio();
+    requestNotificationPermission();
     showScreen('lobby');
 });
+
+// 브라우저 알림 권한 요청
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                console.log('브라우저 알림 권한 허용됨');
+            }
+        });
+    }
+}
 
 // Socket.IO 초기화
 function initializeSocket() {
@@ -66,6 +78,7 @@ function initializeSocket() {
     
     // 채팅 관련 이벤트
     socket.on('chatMessage', handleChatMessage);
+    socket.on('mafiaChatMessage', handleMafiaChatMessage);
     socket.on('chatError', handleChatError);
     socket.on('voteError', handleVoteError);
     
@@ -81,6 +94,66 @@ function initializeSocket() {
     
     // 투표 공개 설정 업데이트
     socket.on('voteVisibilityUpdated', handleVoteVisibilityUpdated);
+
+    // 밤 결과 처리
+    socket.on('nightResults', (results) => {
+        console.log('밤 결과:', results);
+        
+        const resultsDiv = document.createElement('div');
+        resultsDiv.className = 'night-results';
+        
+        let resultsText = '';
+        
+        if (results.killed) {
+            const killedPlayerName = getPlayerNameById(results.killed);
+            resultsText += `💀 ${killedPlayerName}이(가) 죽었습니다.\n`;
+        }
+        
+        // 치료 정보는 의사에게만 공개
+        if (results.saved && playerData?.role === 'doctor') {
+            const savedPlayerName = getPlayerNameById(results.saved);
+            resultsText += `💚 ${savedPlayerName}을(를) 치료했습니다.\n`;
+        }
+        
+        if (results.investigated && playerData?.role === 'police') {
+            const investigatedPlayerName = getPlayerNameById(results.investigated.target);
+            const resultText = results.investigated.result === 'mafia' ? '🔴 마피아' : '🔵 시민';
+            resultsText += `🔍 ${investigatedPlayerName}의 조사 결과: ${resultText}\n`;
+        }
+        
+        if (results.roleSwapped) {
+            if (results.roleSwapped.success) {
+                if (results.roleSwapped.wizard === socket.id) {
+                    // 마법사 본인인 경우
+                    resultsText += `✨ 역할 교환에 성공했습니다! 새로운 역할: ${getRoleDisplayName(results.roleSwapped.wizardNewRole)}\n`;
+                } else if (results.roleSwapped.target === socket.id) {
+                    // 교환 대상인 경우
+                    resultsText += `✨ 마법사가 당신의 역할을 가져갔습니다. 새로운 역할: 시민\n`;
+                }
+                // 다른 플레이어들에게는 역할 교환 사실을 알리지 않음
+            } else {
+                if (results.roleSwapped.wizard === socket.id) {
+                    // 마법사 본인인 경우만 실패 알림
+                    resultsText += `❌ 역할 교환에 실패했습니다.\n`;
+                }
+                // 다른 플레이어들에게는 실패 사실을 알리지 않음
+            }
+        }
+        
+        if (resultsText) {
+            resultsDiv.textContent = resultsText.trim();
+            showToast(resultsText.trim(), 'info', 5000);
+        }
+    });
+
+    // 밤 행동 결과 처리 (역할 교환 실패 등)
+    socket.on('nightActionResult', (data) => {
+        console.log('밤 행동 결과:', data);
+        
+        if (data.type === 'swapFailed') {
+            showToast('❌ ' + data.message, 'error', 3000);
+        }
+    });
 }
 
 // 이벤트 리스너 설정
@@ -112,6 +185,12 @@ function setupEventListeners() {
     document.getElementById('sendGameChatBtn').addEventListener('click', sendGameChatMessage);
     document.getElementById('gameChatInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendGameChatMessage();
+    });
+    
+    // 마피아 전용 채팅 (밤 시간에만 표시됨)
+    document.getElementById('sendMafiaChatBtn').addEventListener('click', sendMafiaChatMessage);
+    document.getElementById('mafiaChatInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMafiaChatMessage();
     });
     
     // 게임 종료 화면
@@ -785,6 +864,27 @@ function updateChatInput(phase) {
     const chatInput = document.getElementById('gameChatInput');
     const sendBtn = document.getElementById('sendGameChatBtn');
     
+    // 마피아 전용 채팅 관련 요소들
+    const mafiaChat = document.getElementById('mafiaChat');
+    const mafiaChatInput = document.getElementById('mafiaChatInput');
+    const sendMafiaChatBtn = document.getElementById('sendMafiaChatBtn');
+    
+    // 마피아 전용 채팅창 표시/숨김 처리
+    if (phase === 'night' && playerData?.role === 'mafia' && isCurrentPlayerAlive()) {
+        // 밤 시간이고 마피아이고 살아있으면 마피아 채팅 활성화
+        if (mafiaChat) {
+            mafiaChat.style.display = 'block';
+            mafiaChatInput.disabled = false;
+            sendMafiaChatBtn.disabled = false;
+            mafiaChatInput.placeholder = '마피아팀 대화...';
+        }
+    } else {
+        // 그 외의 경우 마피아 채팅 숨김
+        if (mafiaChat) {
+            mafiaChat.style.display = 'none';
+        }
+    }
+    
     // 사망자는 언제든지 사망자 채팅 가능
     if (!isCurrentPlayerAlive()) {
         chatInput.disabled = false;
@@ -797,10 +897,14 @@ function updateChatInput(phase) {
         chatInput.disabled = false;
         sendBtn.disabled = false;
         chatInput.placeholder = '토론에 참여하세요...';
+    } else if (phase === 'voting') {
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatInput.placeholder = '투표하며 대화하세요...';
     } else {
         chatInput.disabled = true;
         sendBtn.disabled = true;
-        chatInput.placeholder = '토론 시간에만 채팅할 수 있습니다...';
+        chatInput.placeholder = '토론/투표 시간에만 채팅할 수 있습니다...';
     }
 }
 
@@ -1039,23 +1143,39 @@ function updateFinalPlayersList(players, bots) {
 
 // 행동 확인 처리
 function handleActionConfirmed(data) {
+    console.log('액션 확인됨:', data);
+    
+    let toastMessage = '';
+    let toastType = 'success';
+    
     if (data.action === 'kill' && playerData?.role === 'mafia') {
         const targetName = getPlayerNameById(data.target);
-        showToast(`🔴 ${targetName}을 죽이기로 했습니다.`);
+        toastMessage = `🗡️ ${targetName}을(를) 공격 대상으로 선택했습니다!`;
     } else if (data.action === 'save') {
         const targetName = getPlayerNameById(data.target);
-        showToast(`💚 ${targetName}을 치료하기로 했습니다.`);
+        toastMessage = `💚 ${targetName}을(를) 치료 대상으로 선택했습니다!`;
     } else if (data.action === 'investigate') {
         const targetName = getPlayerNameById(data.target);
-        showToast(`🔍 ${targetName}을 수사하기로 했습니다.`);
+        toastMessage = `🔍 ${targetName}을(를) 수사 대상으로 선택했습니다!`;
     } else if (data.action === 'swap') {
         const targetName = getPlayerNameById(data.target);
-        showToast(`✨ ${targetName}과 직업을 교환하기로 했습니다.`);
+        toastMessage = `✨ ${targetName}과(와) 직업을 교환하기로 했습니다!`;
     } else if (data.action === 'vote') {
         const targetName = getPlayerNameById(data.target);
-        showToast(`🗳️ ${targetName}에게 투표했습니다.`);
+        toastMessage = `🗳️ ${targetName}에게 투표했습니다!`;
     } else {
-        showToast('행동이 선택되었습니다.');
+        toastMessage = '행동이 선택되었습니다!';
+    }
+    
+    // 알림 표시
+    showToast(toastMessage, toastType, 4000);
+    
+    // 브라우저 알림도 표시
+    if (Notification.permission === 'granted') {
+        new Notification('마피아 게임', {
+            body: toastMessage,
+            icon: '/favicon.ico'
+        });
     }
 }
 
@@ -1128,6 +1248,17 @@ function sendGameChatMessage() {
     chatInput.value = '';
 }
 
+// 마피아 전용 채팅 메시지 전송
+function sendMafiaChatMessage() {
+    const chatInput = document.getElementById('mafiaChatInput');
+    const message = chatInput.value.trim();
+    
+    if (!message || chatInput.disabled) return;
+    
+    socket.emit('mafiaChatMessage', { message });
+    chatInput.value = '';
+}
+
 // 채팅 메시지 처리
 function handleChatMessage(data) {
     const isGameScreen = screens.game.classList.contains('active');
@@ -1156,17 +1287,55 @@ function handleChatMessage(data) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
+// 마피아 전용 채팅 메시지 처리
+function handleMafiaChatMessage(data) {
+    const messagesContainer = document.getElementById('mafiaChatMessages');
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${data.type}`;
+    
+    const header = document.createElement('div');
+    header.className = 'message-header';
+    header.textContent = `🔴 ${data.playerName}`;
+    
+    const content = document.createElement('div');
+    content.textContent = data.message;
+    
+    messageDiv.appendChild(header);
+    messageDiv.appendChild(content);
+    
+    messagesContainer.appendChild(messageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
 // 유틸리티 함수들
-function showToast(message) {
+function showToast(message, type = 'info', duration = 3000) {
     const toast = document.getElementById('toast');
     const toastMessage = document.getElementById('toastMessage');
+    const toastIcon = document.getElementById('toastIcon');
     
     toastMessage.textContent = message;
     toast.classList.remove('hidden');
+    toast.classList.remove('success', 'error', 'warning', 'info', 'no-icon');
+    toast.classList.add(type);
+
+    if (type === 'success') {
+        toastIcon.textContent = '';
+        toast.classList.add('no-icon');
+    } else if (type === 'error') {
+        toastIcon.textContent = '❌';
+        toast.classList.remove('no-icon');
+    } else if (type === 'warning') {
+        toastIcon.textContent = '⚠️';
+        toast.classList.remove('no-icon');
+    } else {
+        toastIcon.textContent = '';
+        toast.classList.add('no-icon');
+    }
     
     setTimeout(() => {
         toast.classList.add('hidden');
-    }, 3000);
+    }, duration);
 }
 
 function showLoadingSpinner() {
@@ -1236,7 +1405,23 @@ function handleRoomList(rooms) {
     
     rooms.forEach(room => {
         const roomItem = document.createElement('div');
-        roomItem.className = `room-item ${room.canJoin ? '' : 'full'}`;
+        const statusClass = room.gameStarted ? 'playing' : (room.canJoin ? 'available' : 'full');
+        roomItem.className = `room-item ${statusClass}`;
+        
+        // 게임 상태에 따른 상태 텍스트와 아이콘
+        let statusText = '';
+        let statusIcon = '';
+        
+        if (room.gameStarted) {
+            statusText = '플레이중';
+            statusIcon = '🎮';
+        } else if (room.canJoin) {
+            statusText = '참가 가능';
+            statusIcon = '✅';
+        } else {
+            statusText = '인원 초과';
+            statusIcon = '❌';
+        }
         
         roomItem.innerHTML = `
             <div class="room-info">
@@ -1250,10 +1435,14 @@ function handleRoomList(rooms) {
                         <span>👥</span>
                         <span>${room.currentPlayers}/${room.maxPlayers}</span>
                     </div>
+                    <div class="room-game-status">
+                        <span>${statusIcon}</span>
+                        <span>${room.gameStatus}</span>
+                    </div>
                 </div>
             </div>
-            <div class="room-status ${room.canJoin ? 'available' : 'full'}">
-                ${room.canJoin ? '참가 가능' : '인원 초과'}
+            <div class="room-status ${statusClass}">
+                ${statusText}
             </div>
         `;
         
@@ -1262,6 +1451,10 @@ function handleRoomList(rooms) {
                 document.getElementById('roomCodeInput').value = room.roomCode;
                 joinRoom();
             });
+        } else if (room.gameStarted) {
+            // 플레이 중인 방은 클릭할 수 없지만 비활성화 상태로 표시
+            roomItem.style.cursor = 'not-allowed';
+            roomItem.title = '게임이 진행 중인 방입니다';
         }
         
         roomList.appendChild(roomItem);
