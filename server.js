@@ -4602,6 +4602,7 @@ class MafiaGame {
         this.players = new Map(); // socketId -> player info
         this.sessions = new Map(); // sessionId -> socketId (현재 연결된 세션)
         this.botAI = new BotAI(); // 봇 AI 시스템
+        this.lobbyPlayers = new Set(); // 로비에 있는 플레이어들 (socketId)
         
         // 도배 방지 시스템
         this.chatHistory = new Map(); // playerId -> [timestamps]
@@ -4647,6 +4648,9 @@ class MafiaGame {
         this.rooms.set(roomCode, room);
         this.players.set(hostSocketId, { roomCode, playerId: hostSocketId, sessionId });
         this.sessions.set(sessionId, hostSocketId);
+        
+        // 🚨 **추가**: 방에 들어가면 로비에서 제거
+        this.lobbyPlayers.delete(hostSocketId);
 
         return room;
     }
@@ -4694,6 +4698,9 @@ class MafiaGame {
         room.players.set(socketId, player);
         this.players.set(socketId, { roomCode, playerId: socketId, sessionId });
         this.sessions.set(sessionId, socketId);
+        
+        // 🚨 **추가**: 방에 들어가면 로비에서 제거
+        this.lobbyPlayers.delete(socketId);
 
         return room;
     }
@@ -4757,7 +4764,11 @@ class MafiaGame {
 
     removePlayer(socketId) {
         const playerInfo = this.players.get(socketId);
-        if (!playerInfo) return null;
+        if (!playerInfo) {
+            // 방에 속하지 않은 플레이어가 연결 해제된 경우 (로비에 있던 플레이어)
+            this.lobbyPlayers.delete(socketId);
+            return null;
+        }
 
         // 세션 맵 정리
         if (playerInfo.sessionId) {
@@ -4765,10 +4776,19 @@ class MafiaGame {
         }
 
         const room = this.rooms.get(playerInfo.roomCode);
-        if (!room) return null;
+        if (!room) {
+            this.players.delete(socketId);
+            this.lobbyPlayers.delete(socketId);
+            return null;
+        }
 
         room.players.delete(socketId);
         this.players.delete(socketId);
+        
+        // 🚨 **수정**: 방에서 나간 플레이어는 로비로 돌아가야 하지만,
+        // disconnect 이벤트에서 호출되는 경우는 완전히 연결 해제되므로 로비에 추가하지 않음
+        // 이 메소드는 disconnect 시에만 호출되므로 로비에 추가하지 않음
+        this.lobbyPlayers.delete(socketId);
 
         // 호스트가 나갔다면 다른 플레이어를 호스트로 변경
         if (room.players.size > 0) {
@@ -5439,7 +5459,7 @@ class MafiaGame {
     }
 
     // 공개방 목록 반환
-    getRoomList(ioInstance = null) {
+    getRoomList() {
         const publicRooms = [];
         
         for (const [roomCode, room] of this.rooms) {
@@ -5461,21 +5481,14 @@ class MafiaGame {
             });
         }
         
-        let lobbyPlayers = 0;
+        // 🚨 **수정**: 로비 플레이어 Set의 크기를 직접 반환
+        const lobbyPlayersCount = this.lobbyPlayers.size;
         
-        // 🚨 **수정**: 진짜 로비에 있는 사람들 계산
-        if (ioInstance) {
-            // 전체 연결된 소켓 수에서 방에 속한 플레이어들을 뺀다
-            const totalConnectedSockets = ioInstance.sockets.sockets.size;
-            const playersInRooms = this.players.size; // 방에 속한 플레이어들
-            lobbyPlayers = totalConnectedSockets - playersInRooms;
-            
-            console.log(`[로비 계산] 전체 연결: ${totalConnectedSockets}, 방 안: ${playersInRooms}, 로비: ${lobbyPlayers}`);
-        }
+        console.log(`[로비 계산] 로비 플레이어 수: ${lobbyPlayersCount}, 방 안 플레이어 수: ${this.players.size}`);
         
         return {
             rooms: publicRooms,
-            totalWaitingPlayers: Math.max(0, lobbyPlayers) // 음수 방지
+            totalWaitingPlayers: lobbyPlayersCount
         };
     }
 
@@ -5537,10 +5550,16 @@ const game = new MafiaGame();
 // Socket.IO 연결 처리
 io.on('connection', (socket) => {
     console.log('새 플레이어 연결:', socket.id);
+    
+    // 🚨 **추가**: 새 플레이어를 로비에 추가
+    game.lobbyPlayers.add(socket.id);
+    
+    // 로비 인원 수 변경 알림
+    io.emit('roomListUpdate');
 
     // 방 목록 요청
     socket.on('getRoomList', () => {
-        const roomListData = game.getRoomList(io);
+        const roomListData = game.getRoomList();
         socket.emit('roomList', roomListData);
     });
 
