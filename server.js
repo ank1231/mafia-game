@@ -5529,7 +5529,20 @@ io.on('connection', (socket) => {
 
     // 방 생성
     socket.on('createRoom', (data) => {
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[createRoom 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            socket.emit('joinError', { message: '잘못된 요청입니다.' });
+            return;
+        }
+        
         const { playerName, sessionId } = data;
+        if (!playerName || !sessionId) {
+            console.log(`[createRoom 오류] ${socket.id}: playerName 또는 sessionId가 없음`);
+            socket.emit('joinError', { message: '플레이어 이름과 세션 정보가 필요합니다.' });
+            return;
+        }
+        
         const roomCode = Math.random().toString(36).substr(2, 6).toUpperCase();
         
         const room = game.createRoom(roomCode, socket.id, playerName, sessionId);
@@ -5557,7 +5570,20 @@ io.on('connection', (socket) => {
 
     // 방 참가
     socket.on('joinRoom', (data) => {
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[joinRoom 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            socket.emit('joinError', { message: '잘못된 요청입니다.' });
+            return;
+        }
+        
         const { roomCode, playerName, sessionId } = data;
+        if (!roomCode || !playerName || !sessionId) {
+            console.log(`[joinRoom 오류] ${socket.id}: 필수 정보가 없음`);
+            socket.emit('joinError', { message: '방 코드, 플레이어 이름, 세션 정보가 모두 필요합니다.' });
+            return;
+        }
+        
         const result = game.joinRoom(roomCode, socket.id, playerName, sessionId);
         
         if (result && !result.error) {
@@ -5599,7 +5625,18 @@ io.on('connection', (socket) => {
         const room = game.rooms.get(playerInfo.roomCode);
         if (!room || !room.players.get(socket.id)?.isHost) return;
         
+        // 🚨 방어 코드: data가 undefined이거나 botName이 없는 경우 처리
+        if (!data || typeof data !== 'object') {
+            console.log(`[addBot 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            return;
+        }
+        
         const { botName } = data;
+        if (!botName || typeof botName !== 'string') {
+            console.log(`[addBot 오류] ${socket.id}: botName이 없거나 잘못된 형식`);
+            return;
+        }
+        
         const result = game.addBot(playerInfo.roomCode, botName);
         
         if (result && !result.error) {
@@ -5662,7 +5699,17 @@ io.on('connection', (socket) => {
         const room = game.rooms.get(playerInfo.roomCode);
         if (!room || !room.players.get(socket.id)?.isHost) return;
         
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[setMaxPlayers 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            return;
+        }
+        
         const { maxPlayers } = data;
+        if (!maxPlayers || typeof maxPlayers !== 'number') {
+            console.log(`[setMaxPlayers 오류] ${socket.id}: maxPlayers가 없거나 잘못된 형식`);
+            return;
+        }
         if (game.setMaxPlayers(playerInfo.roomCode, maxPlayers)) {
             io.to(playerInfo.roomCode).emit('playerListUpdate', {
                 players: Array.from(room.players.values()),
@@ -5759,7 +5806,17 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[nightAction 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            return;
+        }
+        
         const { action, target } = data;
+        if (!action) {
+            console.log(`[nightAction 오류] ${socket.id}: action이 없음`);
+            return;
+        }
         console.log('밤 행동 수신:', {
             player: player.name,
             role: player.role,
@@ -5818,7 +5875,19 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[vote 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            socket.emit('voteError', { message: '잘못된 투표 요청입니다.' });
+            return;
+        }
+        
         const { target } = data;
+        if (!target) {
+            console.log(`[vote 오류] ${socket.id}: target이 없음`);
+            socket.emit('voteError', { message: '투표 대상을 선택해주세요.' });
+            return;
+        }
         room.votes.set(socket.id, target);
         
         socket.emit('voteConfirmed', { target });
@@ -5862,7 +5931,17 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[chatMessage 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            return;
+        }
+        
         const { message } = data;
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            console.log(`[chatMessage 오류] ${socket.id}: message가 없거나 잘못된 형식`);
+            return;
+        }
         const timestamp = new Date();
 
         // 채팅 메시지를 AI 히스토리에 저장
@@ -5936,7 +6015,18 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 🚨 방어 코드: data 검증
+        if (!data || typeof data !== 'object') {
+            console.log(`[mafiaChatMessage 오류] ${socket.id}: data가 undefined 또는 잘못된 형식`);
+            return;
+        }
+        
         const { message } = data;
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            console.log(`[mafiaChatMessage 오류] ${socket.id}: message가 없거나 잘못된 형식`);
+            return;
+        }
+        
         const timestamp = new Date();
 
         // 마피아 채팅 메시지를 AI 히스토리에 저장 (특별 타입으로)
