@@ -4119,7 +4119,7 @@ class BotAI {
             // 실제로 조사 결과를 발표했는지 확인
             const statements = history.playerStatements.get(playerId);
             if (statements && statements.informationClaims) {
-                const investigationClaims = statements.informationClaims.filter(ic => ic.type === 'investigation');
+                const investigationClaims = statements.informationClaims.filter(ic => ic.role === 'investigation');
                 if (investigationClaims.length > 0) {
                     credibility += 30; // 조사 결과 발표
                 }
@@ -4258,17 +4258,24 @@ class BotAI {
         return room.bots.has(playerId);
     }
 
-    // 🆕 반응형 봇 채팅 트리거
+    // 🆕 반응형 봇 채팅 트리거 (🚨 수정: 각 봇별로 개별 타겟 검사)
     triggerReactiveBotChats(room, chatMessage) {
         const aliveBots = Array.from(room.bots.values()).filter(bot => bot.alive);
         if (!aliveBots.length) return;
 
-        // 메시지 분석 - 누구를 타겟으로 하는 발언인지 확인
-        const targetedBots = this.findTargetedBots(chatMessage, room, aliveBots);
-        
-        if (targetedBots.length > 0) {
-            // 타겟이 된 봇들이 응답
-            targetedBots.forEach((bot, index) => {
+        // 🚨 **핵심**: 각 봇별로 개별적으로 타겟 검사 (자기 자신 제외)
+        aliveBots.forEach((bot, index) => {
+            // 봇이 자기 자신의 메시지에 응답하지 않도록 체크
+            if (bot.id === chatMessage.playerId) {
+                console.log(`[반응형 채팅 제외] ${bot.name}: 자기 자신의 메시지에는 응답하지 않음`);
+                return;
+            }
+            
+            // 각 봇별로 개별적으로 타겟 확인 (자기 자신은 제외)
+            const targetedBots = this.findTargetedBots(chatMessage, room, aliveBots, bot);
+            const isTargeted = targetedBots.some(targetBot => targetBot.id === bot.id);
+            
+            if (isTargeted) {
                 const delay = 2000 + (index * 1000) + Math.random() * 2000; // 2-5초 사이 응답
                 
                 setTimeout(() => {
@@ -4296,48 +4303,51 @@ class BotAI {
                         }
                     }
                 }, delay);
-            });
-        } else {
-            // 일반적인 발언에 대한 확률적 반응 (20% 확률)
-            if (Math.random() < 0.2 && (room.gameState === 'discussion' || room.gameState === 'voting')) {
-                const randomBot = aliveBots[Math.floor(Math.random() * aliveBots.length)];
-                const delay = 3000 + Math.random() * 4000; // 3-7초 사이 응답
-                
-                setTimeout(() => {
-                    if (room.gameState === chatMessage.gamePhase && randomBot.alive) {
-                        const responseMessage = this.generateGeneralResponse(room, randomBot, chatMessage);
-                        if (responseMessage) {
-                            console.log(`[일반 반응] ${randomBot.name}: 일반적인 반응 생성`);
-                            
-                            this.addChatMessage(room.code, {
-                                type: 'player',
-                                playerId: randomBot.id,
-                                playerName: randomBot.name,
-                                message: responseMessage,
-                                round: room.round,
-                                gamePhase: room.gameState
-                            }, room);
-
-                            io.to(room.code).emit('chatMessage', {
-                                type: 'player',
-                                playerName: randomBot.name,
-                                message: responseMessage,
-                                timestamp: new Date()
-                            });
-                        }
-                    }
-                }, delay);
             }
+        });
+        
+        // 일반적인 발언에 대한 확률적 반응 (20% 확률)
+        if (Math.random() < 0.2 && (room.gameState === 'discussion' || room.gameState === 'voting')) {
+            const randomBot = aliveBots[Math.floor(Math.random() * aliveBots.length)];
+            const delay = 3000 + Math.random() * 4000; // 3-7초 사이 응답
+            
+            setTimeout(() => {
+                if (room.gameState === chatMessage.gamePhase && randomBot.alive) {
+                    const responseMessage = this.generateGeneralResponse(room, randomBot, chatMessage);
+                    if (responseMessage) {
+                        console.log(`[일반 반응] ${randomBot.name}: 일반적인 반응 생성`);
+                        
+                        this.addChatMessage(room.code, {
+                            type: 'player',
+                            playerId: randomBot.id,
+                            playerName: randomBot.name,
+                            message: responseMessage,
+                            round: room.round,
+                            gamePhase: room.gameState
+                        }, room);
+
+                        io.to(room.code).emit('chatMessage', {
+                            type: 'player',
+                            playerName: randomBot.name,
+                            message: responseMessage,
+                            timestamp: new Date()
+                        });
+                    }
+                }
+            }, delay);
         }
     }
 
-    // 🆕 타겟이 된 봇들 찾기
-    findTargetedBots(chatMessage, room, aliveBots) {
+    // 🆕 타겟이 된 봇들 찾기 (🚨 수정: 각 봇별로 개별 검사)
+    findTargetedBots(chatMessage, room, aliveBots, excludeBot = null) {
         const message = chatMessage.message.toLowerCase();
         const targetedBots = [];
         
         // 1. 직접 이름 언급
         for (const bot of aliveBots) {
+            // 🚨 **핵심**: 제외할 봇이 있으면 제외
+            if (excludeBot && bot.id === excludeBot.id) continue;
+            
             if (message.includes(bot.name.toLowerCase())) {
                 targetedBots.push(bot);
             }
@@ -4365,12 +4375,18 @@ class BotAI {
         if (targetedBots.length === 0) {
             for (const pattern of accusationPatterns) {
                 if (pattern.test(message)) {
-                    // 가장 최근에 발언한 봇을 타겟으로 선정
+                    // 가장 최근에 발언한 봇을 타겟으로 선정 (🚨 수정: 제외할 봇 고려)
                     const recentBotMessages = this.getRecentBotMessages(room, 3);
                     if (recentBotMessages.length > 0) {
-                        const recentBot = aliveBots.find(bot => bot.id === recentBotMessages[0].playerId);
-                        if (recentBot && !targetedBots.includes(recentBot)) {
-                            targetedBots.push(recentBot);
+                        for (const recentMessage of recentBotMessages) {
+                            const recentBot = aliveBots.find(bot => bot.id === recentMessage.playerId);
+                            if (recentBot && !targetedBots.includes(recentBot)) {
+                                // 🚨 **핵심**: 제외할 봇이 아닌 경우에만 타겟으로 선정
+                                if (!excludeBot || recentBot.id !== excludeBot.id) {
+                                    targetedBots.push(recentBot);
+                                    break; // 첫 번째 적합한 봇만 타겟으로
+                                }
+                            }
                         }
                     }
                     break;
