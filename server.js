@@ -5439,9 +5439,8 @@ class MafiaGame {
     }
 
     // 공개방 목록 반환
-    getRoomList() {
+    getRoomList(ioInstance = null) {
         const publicRooms = [];
-        let totalWaitingPlayers = 0; // 대기중인 총 인원 수
         
         for (const [roomCode, room] of this.rooms) {
             const totalPlayers = room.players.size + room.bots.size;
@@ -5450,11 +5449,6 @@ class MafiaGame {
             // 게임 상태 정보
             const gameStatus = room.gameStarted ? '플레이중' : '대기중';
             const canJoin = !room.gameStarted && totalPlayers < room.maxPlayers;
-            
-            // 대기중인 방의 인원 수만 계산 (게임 중인 방 제외)
-            if (!room.gameStarted) {
-                totalWaitingPlayers += totalPlayers;
-            }
             
             publicRooms.push({
                 roomCode: roomCode,
@@ -5467,9 +5461,21 @@ class MafiaGame {
             });
         }
         
+        let lobbyPlayers = 0;
+        
+        // 🚨 **수정**: 진짜 로비에 있는 사람들 계산
+        if (ioInstance) {
+            // 전체 연결된 소켓 수에서 방에 속한 플레이어들을 뺀다
+            const totalConnectedSockets = ioInstance.sockets.sockets.size;
+            const playersInRooms = this.players.size; // 방에 속한 플레이어들
+            lobbyPlayers = totalConnectedSockets - playersInRooms;
+            
+            console.log(`[로비 계산] 전체 연결: ${totalConnectedSockets}, 방 안: ${playersInRooms}, 로비: ${lobbyPlayers}`);
+        }
+        
         return {
             rooms: publicRooms,
-            totalWaitingPlayers: totalWaitingPlayers
+            totalWaitingPlayers: Math.max(0, lobbyPlayers) // 음수 방지
         };
     }
 
@@ -5534,7 +5540,7 @@ io.on('connection', (socket) => {
 
     // 방 목록 요청
     socket.on('getRoomList', () => {
-        const roomListData = game.getRoomList();
+        const roomListData = game.getRoomList(io);
         socket.emit('roomList', roomListData);
     });
 
