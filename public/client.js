@@ -167,6 +167,7 @@ function setupEventListeners() {
     // 로비 화면
     document.getElementById('createRoomBtn').addEventListener('click', createRoom);
     document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
+    document.getElementById('gameGuideBtn').addEventListener('click', showGameGuide);
     document.getElementById('playerName').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') createRoom();
     });
@@ -214,6 +215,9 @@ function setupEventListeners() {
     // 모달
     document.getElementById('modalOkBtn').addEventListener('click', hideModal);
     document.getElementById('modalCancelBtn').addEventListener('click', hideModal);
+    
+    // 게임 가이드 모달
+    document.getElementById('gameGuideCloseBtn').addEventListener('click', hideGameGuide);
     
     // 추가: 투표 공개 설정
     const voteVisibilitySelect = document.getElementById('voteVisibilitySelect');
@@ -1484,6 +1488,7 @@ document.addEventListener('keydown', (e) => {
     // ESC 키로 모달 닫기
     if (e.key === 'Escape') {
         hideModal();
+        hideGameGuide();
     }
 });
 
@@ -1936,4 +1941,23 @@ function setupRoleTooltip(roleElement, role) {
     });
 
 
+}
+
+// 게임 가이드 모달 표시
+function showGameGuide() {
+    const gameGuideModal = document.getElementById('gameGuideModal');
+    gameGuideModal.classList.remove('hidden');
+    
+    // 모달 오버레이 클릭 시 닫기
+    gameGuideModal.addEventListener('click', (e) => {
+        if (e.target === gameGuideModal) {
+            hideGameGuide();
+        }
+    });
+}
+
+// 게임 가이드 모달 숨기기
+function hideGameGuide() {
+    const gameGuideModal = document.getElementById('gameGuideModal');
+    gameGuideModal.classList.add('hidden');
 } 

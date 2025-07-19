@@ -27,6 +27,7 @@
                         <input type="text" id="roomCodeInput" placeholder="방 코드 입력" maxlength="6">
                         <button id="joinRoomBtn" class="secondary-btn">참가하기</button>
                     </div>
+                    <button id="gameGuideBtn" class="secondary-btn">📖 게임방법</button>
                 </div>
 
                 <div class="room-list-section">
@@ -194,6 +195,162 @@
                 <div class="game-end-actions">
                     <button id="newGameBtn" class="primary-btn">새 게임</button>
                     <button id="backToLobbyBtn" class="secondary-btn">로비로 돌아가기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 가이드 모달 -->
+    <div id="gameGuideModal" class="modal hidden">
+        <div class="modal-content game-guide-modal">
+            <div class="modal-header">
+                <h2>🎮 마피아 게임 가이드</h2>
+                <button id="gameGuideCloseBtn" class="modal-close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="guide-section">
+                    <h3>📋 게임 규칙</h3>
+                    <div class="guide-content">
+                        <p><strong>목표:</strong> 시민팀은 모든 마피아를 찾아내고, 마피아팀은 시민 수와 같아질 때까지 제거하는 것입니다.</p>
+                        <p><strong>진행:</strong> 낮(토론/투표)과 밤(특수능력 사용)이 번갈아 진행됩니다.</p>
+                        <p><strong>승리조건:</strong></p>
+                        <ul>
+                            <li>시민팀: 모든 마피아 제거</li>
+                            <li>마피아팀: 마피아 수 ≥ 시민 수</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3>👥 직업 소개</h3>
+                    <div class="roles-grid">
+                        <div class="role-card mafia">
+                            <div class="role-header">
+                                <span class="role-icon">🎭</span>
+                                <span class="role-name">마피아</span>
+                                <span class="role-team">마피아팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 다른 플레이어들을 속이고, 밤마다 한 명씩 제거하여 살아남으세요.</p>
+                                <p><strong>능력:</strong> 밤이 되면, 다른 마피아들과 함께 제거할 대상 한 명을 지목할 수 있습니다.</p>
+                                <p class="role-tip">💡 팁: 낮에는 선량한 직업인 척 연기하며, 다른 사람을 마피아로 몰아가는 것이 중요해요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card police">
+                            <div class="role-header">
+                                <span class="role-icon">👮</span>
+                                <span class="role-name">경찰</span>
+                                <span class="role-team">시민팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 마피아를 찾아내 시민들을 승리로 이끄세요.</p>
+                                <p><strong>능력:</strong> 밤이 되면, 살아있는 사람 한 명을 지목하여 그 사람이 '마피아'인지 아닌지 확인할 수 있습니다.</p>
+                                <p class="role-tip">💡 팁: 당신의 정보는 매우 강력해요. 정체를 너무 빨리 밝히면 마피아의 첫 번째 목표가 될 수 있으니 조심하세요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card doctor">
+                            <div class="role-header">
+                                <span class="role-icon">🩺</span>
+                                <span class="role-name">의사</span>
+                                <span class="role-team">시민팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 시민들을 치료하여 마피아의 공격으로부터 보호하세요.</p>
+                                <p><strong>능력:</strong> 밤이 되면, 살아있는 사람 한 명을 지목하여 마피아의 공격으로부터 보호할 수 있습니다.</p>
+                                <p class="role-tip">💡 팁: 중요한 역할을 가진 사람을 보호하세요. 자신을 치료할 수는 없지만, 때로는 예상 밖의 사람을 구해서 마피아를 혼란에 빠뜨릴 수도 있어요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card citizen">
+                            <div class="role-header">
+                                <span class="role-icon">👥</span>
+                                <span class="role-name">시민</span>
+                                <span class="role-team">시민팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 마피아를 찾아내 모두 제거하세요.</p>
+                                <p><strong>능력:</strong> 특별한 능력은 없지만, 토론과 투표로 마피아를 찾아낼 수 있습니다.</p>
+                                <p class="role-tip">💡 팁: 당신은 게임의 핵심이에요. 다른 플레이어들의 행동을 잘 관찰하고, 논리적으로 추리하여 마피아를 찾아내세요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card wizard">
+                            <div class="role-header">
+                                <span class="role-icon">🧙</span>
+                                <span class="role-name">마법사</span>
+                                <span class="role-team">시민팀 (변동 가능)</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 다른 사람의 능력을 훔쳐 게임의 변수를 만드세요.</p>
+                                <p><strong>능력:</strong> 게임 중 단 한 번, 밤에 다른 사람 한 명을 지목하여 그 사람의 직업을 훔칠 수 있습니다. 상대방은 시민이 되고, 당신은 그의 직업과 능력을 갖게 됩니다. (마피아를 훔치면 당신도 마피아팀이 돼요.)</p>
+                                <p class="role-tip">💡 팁: 게임의 흐름을 바꿀 수 있는 매우 강력한 능력이니, 신중하게 사용하세요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card joker">
+                            <div class="role-header">
+                                <span class="role-icon">🤡</span>
+                                <span class="role-name">조커</span>
+                                <span class="role-team">시민팀 (변동 가능)</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 시민으로 끝까지 살아남아 마피아를 찾아내거나, 마피아의 공격을 유도하여 새로운 마피아가 되어 시민을 없애세요.</p>
+                                <p><strong>능력:</strong> 마피아에게 공격당하면, 공격한 마피아를 죽이고 자신이 새로운 마피아가 됩니다.</p>
+                                <p class="role-tip">💡 팁: 두 가지 승리 조건이 있어요. 시민으로 끝까지 살아남거나, 마피아의 공격을 받아 마피아가 되어 시민팀을 배신할 수 있습니다.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card shaman">
+                            <div class="role-header">
+                                <span class="role-icon">🔮</span>
+                                <span class="role-name">무당</span>
+                                <span class="role-team">시민팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 죽은 자들의 정보를 활용하여 시민팀을 승리로 이끄세요.</p>
+                                <p><strong>능력:</strong> 밤이 되면, 죽은 플레이어 한 명을 지목하여 그 사람의 역할을 확인할 수 있습니다.</p>
+                                <p class="role-tip">💡 팁: 죽은 플레이어들의 역할을 파악하여 살아있는 마피아가 누구인지 추리하세요. 정보를 현명하게 활용하면 게임을 뒤바꿀 수 있어요.</p>
+                            </div>
+                        </div>
+
+                        <div class="role-card politician">
+                            <div class="role-header">
+                                <span class="role-icon">🏛️</span>
+                                <span class="role-name">정치인</span>
+                                <span class="role-team">시민팀</span>
+                            </div>
+                            <div class="role-details">
+                                <p><strong>목표:</strong> 영향력을 행사하여 시민팀을 승리로 이끄세요.</p>
+                                <p><strong>능력:</strong> 투표 시 당신의 표는 1.5표로 계산됩니다.</p>
+                                <p class="role-tip">💡 팁: 당신의 투표는 더 큰 영향력을 가져요. 신중하게 투표하여 시민팀에게 유리한 결과를 만들어내세요.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3>🕐 게임 진행</h3>
+                    <div class="guide-content">
+                        <div class="phase-info">
+                            <h4>🌙 밤 단계</h4>
+                            <p>각 직업은 자신의 특수 능력을 사용합니다. 마피아는 공격 대상을 선택하고, 경찰은 수사, 의사는 치료 등을 진행합니다.</p>
+                        </div>
+                        <div class="phase-info">
+                            <h4>🌅 아침 단계</h4>
+                            <p>밤에 일어난 일들의 결과가 공개됩니다. 누가 죽었는지, 치료받았는지 등이 알려집니다.</p>
+                        </div>
+                        <div class="phase-info">
+                            <h4>💬 토론 단계</h4>
+                            <p>모든 플레이어가 자유롭게 토론합니다. 의심되는 사람을 지목하고 의견을 나누는 시간입니다.</p>
+                        </div>
+                        <div class="phase-info">
+                            <h4>🗳️ 투표 단계</h4>
+                            <p>가장 많은 표를 받은 플레이어가 처형됩니다. 동점일 경우 아무도 처형되지 않습니다.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
