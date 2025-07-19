@@ -81,6 +81,28 @@ h1 {
     margin-bottom: 2rem;
 }
 
+/* 클릭 가능한 닉네임 스타일 */
+.clickable-nickname {
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin: -2px -4px;
+}
+
+.clickable-nickname:hover {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: var(--glow-cyan);
+    transform: scale(1.05);
+}
+
+.clickable-nickname:active {
+    transform: scale(0.95);
+}
+
 /* 버튼 시스템 */
 .primary-btn, .secondary-btn, .action-btn, .target-btn {
     background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
@@ -456,12 +478,27 @@ input::placeholder {
     text-transform: uppercase;
     font-size: 12px;
     letter-spacing: 1px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.role-badge:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.6);
+    filter: brightness(1.1);
+}
+
+.role-badge:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
 }
 
 .role-badge.mafia {
-    background: var(--accent-pink);
-    color: var(--bg-primary);
-    box-shadow: var(--glow-pink);
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: var(--text-primary);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 .role-badge.doctor {
@@ -474,27 +511,184 @@ input::placeholder {
     color: var(--text-primary);
 }
 
-.role-badge.citizen {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-accent);
-    color: var(--text-secondary);
-}
-
 .role-badge.wizard {
     background: linear-gradient(135deg, #8b5cf6, #6d28d9);
     color: var(--text-primary);
     box-shadow: var(--glow-purple);
 }
 
+.role-badge.joker {
+    background: linear-gradient(135deg, #ec4899, #be185d);
+    color: var(--text-primary);
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.5);
+}
+
+.role-badge.shaman {
+    background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+    color: #1e293b;
+    box-shadow: 0 0 20px rgba(248, 250, 252, 0.8);
+}
+
+.role-badge.politician {
+    background: linear-gradient(135deg, #6b7280, #4b5563);
+    color: var(--text-primary);
+    box-shadow: 0 0 20px rgba(107, 114, 128, 0.5);
+}
+
+.role-badge.citizen {
+    background: linear-gradient(135deg, #64748b, #475569);
+    color: var(--text-primary);
+    box-shadow: 0 0 20px rgba(100, 116, 139, 0.5);
+}
+
+/* 역할 설명 툴팁 배경 오버레이 */
+.role-tooltip-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9998;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.role-tooltip-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 역할 설명 툴팁 */
+.role-tooltip {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+    border: 2px solid var(--accent-cyan);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--glow-cyan), 0 20px 40px rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    min-width: 500px;
+    max-width: 550px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    backdrop-filter: blur(10px);
+}
+
+.role-tooltip.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.role-tooltip::before {
+    display: none;
+}
+
+.role-tooltip-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-accent);
+}
+
+.role-tooltip-icon {
+    font-size: 24px;
+}
+
+.role-tooltip-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.role-tooltip-team {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex: 1;
+}
+
+.role-tooltip-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px;
+    margin-left: auto;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.role-tooltip-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent-cyan);
+    transform: scale(1.1);
+}
+
+.role-tooltip-section {
+    margin-bottom: 12px;
+}
+
+.role-tooltip-section:last-child {
+    margin-bottom: 0;
+}
+
+.role-tooltip-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.role-tooltip-content {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    word-break: keep-all;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    hyphens: none;
+}
+
+.role-tooltip-tip {
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    word-break: keep-all;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    hyphens: none;
+}
+
 /* 마피아 팀 정보 */
 .mafia-team-info {
     width: 100%;
-    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
     color: var(--text-primary);
     padding: 16px;
     border-radius: 8px;
     margin-top: 12px;
-    box-shadow: var(--glow-pink);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 .team-title {
@@ -548,9 +742,9 @@ input::placeholder {
 }
 
 .chat-message.mafia {
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(190, 24, 93, 0.15) 100%);
-    border: 1px solid rgba(236, 72, 153, 0.4);
-    box-shadow: 0 0 10px rgba(236, 72, 153, 0.2);
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.2) 0%, rgba(153, 27, 27, 0.15) 100%);
+    border: 1px solid rgba(220, 38, 38, 0.4);
+    box-shadow: 0 0 10px rgba(220, 38, 38, 0.2);
 }
 
 .message-header {
@@ -572,9 +766,9 @@ input::placeholder {
 /* 마피아 전용 채팅 */
 .mafia-chat-section {
     margin-top: 20px;
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(190, 24, 93, 0.1) 100%);
-    border: 1px solid rgba(236, 72, 153, 0.3);
-    box-shadow: var(--glow-pink);
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(153, 27, 27, 0.1) 100%);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 .mafia-chat-section::before {
@@ -584,12 +778,12 @@ input::placeholder {
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, var(--accent-pink), #be185d);
+    background: linear-gradient(90deg, #dc2626, #991b1b);
 }
 
 .mafia-chat-section h3 {
-    color: var(--accent-pink);
-    text-shadow: var(--glow-pink);
+    color: #dc2626;
+    text-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
     margin-bottom: 16px;
     font-size: 14px;
 }
@@ -597,29 +791,29 @@ input::placeholder {
 .mafia-chat-messages {
     height: 200px;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(236, 72, 153, 0.2);
+    border: 1px solid rgba(220, 38, 38, 0.2);
 }
 
 .mafia-chat-section .chat-input input {
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(236, 72, 153, 0.3);
+    border: 1px solid rgba(220, 38, 38, 0.3);
     color: var(--text-primary);
 }
 
 .mafia-chat-section .chat-input input:focus {
-    border-color: var(--accent-pink);
-    box-shadow: var(--glow-pink);
+    border-color: #dc2626;
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 .mafia-chat-section .chat-input button {
-    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
     border: none;
     color: var(--text-primary);
 }
 
 .mafia-chat-section .chat-input button:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: var(--glow-pink);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 /* 게임 액션 */
@@ -639,9 +833,9 @@ input::placeholder {
 }
 
 .action-btn.kill {
-    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
     color: var(--text-primary);
-    box-shadow: var(--glow-pink);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 .action-btn.save {
@@ -735,9 +929,9 @@ input::placeholder {
 }
 
 .winner-team.mafia {
-    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
     color: var(--text-primary);
-    box-shadow: var(--glow-pink);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
 }
 
 /* 모달 */
@@ -799,9 +993,9 @@ input::placeholder {
 }
 
 .toast.error {
-    background: linear-gradient(135deg, var(--accent-pink) 0%, #be185d 100%);
-    border-color: var(--accent-pink);
-    box-shadow: var(--glow-pink), 0 10px 30px rgba(236, 72, 153, 0.3);
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    border-color: #dc2626;
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5), 0 10px 30px rgba(220, 38, 38, 0.3);
 }
 
 .toast.warning {
@@ -956,6 +1150,18 @@ body.theme-light .toast {
     }
 }
 
+/* 봇 컨트롤 */
+.bot-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.bot-controls .secondary-btn {
+    flex: 1;
+    min-width: 120px;
+}
+
 @media (max-width: 480px) {
     .lobby-section { padding: 20px; }
     .players-section, .chat-section, 
@@ -964,4 +1170,42 @@ body.theme-light .toast {
     .chat-messages { height: 250px; }
     .modal-content { padding: 24px; }
     .modal-actions { flex-direction: column; }
+    
+    .bot-controls {
+        flex-direction: column;
+    }
+    
+    .bot-controls .secondary-btn {
+        width: 100%;
+    }
+}
+
+/* 모바일에서는 툴팁 크기 조정 */
+@media (max-width: 768px) {
+    .role-tooltip {
+        min-width: 380px;
+        max-width: 420px;
+        margin: 20px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .role-tooltip {
+        min-width: 280px;
+        max-width: 300px;
+        padding: 16px;
+        margin: 15px;
+    }
+    
+    .role-tooltip-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .role-tooltip-team {
+        margin-left: 0;
+    }
 }

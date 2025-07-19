@@ -121,6 +121,12 @@ function initializeSocket() {
             resultsText += `🔍 ${investigatedPlayerName}의 조사 결과: ${resultText}\n`;
         }
         
+        if (results.spiritInvestigated && playerData?.role === 'shaman') {
+            const investigatedPlayerName = getPlayerNameById(results.spiritInvestigated.target);
+            const roleDisplayName = getRoleDisplayName(results.spiritInvestigated.targetRole);
+            resultsText += `🔮 ${investigatedPlayerName}의 영혼 조사 결과: ${roleDisplayName}\n`;
+        }
+        
         if (results.roleSwapped) {
             if (results.roleSwapped.success) {
                 if (results.roleSwapped.wizard === socket.id) {
@@ -175,6 +181,7 @@ function setupEventListeners() {
     document.getElementById('copyCodeBtn').addEventListener('click', copyRoomCode);
     document.getElementById('maxPlayersSelect').addEventListener('change', setMaxPlayers);
     document.getElementById('addBotBtn').addEventListener('click', addBot);
+    document.getElementById('removeBotBtn').addEventListener('click', removeBot);
     document.getElementById('startGameBtn').addEventListener('click', startGame);
     document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
     document.getElementById('chatInput').addEventListener('keypress', (e) => {
@@ -379,8 +386,14 @@ function createPlayerItem(player, isBot) {
     playerInfo.className = 'player-info';
     
     const playerName = document.createElement('span');
-    playerName.className = 'player-name';
+    playerName.className = 'player-name clickable-nickname';
     playerName.textContent = player.name;
+    playerName.title = '클릭하여 닉네임 복사';
+    
+    // 닉네임 클릭 이벤트 추가
+    playerName.addEventListener('click', () => {
+        copyNicknameToChat(player.name);
+    });
     
     playerInfo.appendChild(playerName);
     
@@ -391,12 +404,7 @@ function createPlayerItem(player, isBot) {
         playerInfo.appendChild(hostBadge);
     }
     
-    if (isBot) {
-        const botBadge = document.createElement('span');
-        botBadge.className = 'player-badge bot';
-        botBadge.textContent = '봇';
-        playerInfo.appendChild(botBadge);
-    }
+    // 봇 배지는 표시하지 않음 (이름에 이미 봇이라고 포함되어 있음)
     
     // 현재 플레이어 배지
     if (player.id === socket.id) {
@@ -431,21 +439,77 @@ function setMaxPlayers() {
 function addBot() {
     if (!isHost) return;
     
-    const botNameInput = document.getElementById('botNameInput');
-    const botName = botNameInput.value.trim();
+    // 재미있는 봇 이름 목록
+    const funnyBotNames = [
+        '너마피아잖아',
+        '말투가찐인데',
+        '니가뭘할수있는데',
+        '몰루',
+        '어어딜가노',
+        '조용한놈이수상함',
+        '이게맞냐',
+        '목소리큰놈이범인',
+        '말없으면마피아',
+        '아니라고했잖아',
+        '선동과날조',
+        '과몰입금지',
+        '쟤가범인임',
+        '이번판은졌네',
+        '의사야힐좀줘라',
+        '경찰이일을안함',
+        '형은다알고있다',
+        '지령내리지마라',
+        '니가더수상함',
+        '어차피죽을목숨',
+        '증거있냐고',
+        '무지성투표ㄱㄱ',
+        '딱보니까알겠네',
+        '아니면어쩔건데',
+        '이길생각없음',
+        '빨리좀죽여줘',
+        '투표하기싫어',
+        '그냥다죽자',
+        '억까하지마라',
+        '뇌는장식임',
+        '죽으면그만이야',
+        '닉네임이수상함',
+        '쟤부터죽여보죠',
+        '대충투표함',
+        '말많으면시민임'
+    ];
     
-    if (!botName) {
-        showToast('봇 이름을 입력해주세요.');
-        return;
-    }
+    // 이미 사용된 이름들 수집 (플레이어 + 봇)
+    const usedNames = new Set();
+    currentPlayers.forEach(player => usedNames.add(player.name));
+    currentBots.forEach(bot => usedNames.add(bot.name));
     
-    if (botName.length > 10) {
-        showToast('봇 이름은 10자 이하로 입력해주세요.');
-        return;
+    // 사용 가능한 이름 필터링
+    const availableNames = funnyBotNames.filter(name => !usedNames.has(name));
+    
+    let botName;
+    if (availableNames.length > 0) {
+        // 사용 가능한 재미있는 이름 중 랜덤 선택
+        const randomIndex = Math.floor(Math.random() * availableNames.length);
+        botName = availableNames[randomIndex];
+    } else {
+        // 모든 재미있는 이름이 사용된 경우 기본 이름 사용
+        const botCount = currentBots.length + 1;
+        botName = `봇${botCount}`;
     }
     
     socket.emit('addBot', { botName });
-    botNameInput.value = '';
+}
+
+// 봇 제거
+function removeBot() {
+    if (!isHost) return;
+    
+    if (currentBots.length === 0) {
+        showToast('제거할 봇이 없습니다.');
+        return;
+    }
+    
+    socket.emit('removeBot');
 }
 
 // 게임 시작
@@ -499,6 +563,10 @@ function handleRoleAssigned(data) {
     const roleElement = document.getElementById('playerRole');
     roleElement.textContent = getRoleDisplayName(data.role);
     roleElement.className = `role-badge ${data.role}`;
+    roleElement.title = '클릭하여 역할 설명 보기';
+
+    // 역할 설명 툴팁 이벤트 추가
+    setupRoleTooltip(roleElement, data.role);
 
     // 이전에 표시된 마피아 팀 정보 제거
     const existingTeamInfo = document.getElementById('mafiaTeamInfo');
@@ -536,10 +604,13 @@ function handleRoleAssigned(data) {
 function getRoleDisplayName(role) {
     const roleNames = {
         'mafia': '마피아',
+        'citizen': '시민',
         'doctor': '의사',
         'police': '경찰',
-        'citizen': '시민',
-        'wizard': '마법사'
+        'wizard': '마법사',
+        'joker': '조커',
+        'shaman': '무당',
+        'politician': '정치인'
     };
     return roleNames[role] || role;
 }
@@ -666,6 +737,21 @@ function createNightActionButtons() {
             waitDiv.style.color = 'var(--text-light)';
             actionButtons.appendChild(waitDiv);
             console.log('시민 대기 메시지 생성');
+            break;
+            
+        case 'joker':
+            const jokerWaitDiv = document.createElement('div');
+            jokerWaitDiv.textContent = '조커는 밤에 할 수 있는 행동이 없습니다. 마피아의 공격을 기다리세요.';
+            jokerWaitDiv.style.textAlign = 'center';
+            jokerWaitDiv.style.color = 'var(--text-light)';
+            actionButtons.appendChild(jokerWaitDiv);
+            console.log('조커 대기 메시지 생성');
+            break;
+            
+        case 'shaman':
+            const spiritInvestigateBtn = createActionButton('spirit_investigate', '영혼 조사', 'spirit_investigate');
+            actionButtons.appendChild(spiritInvestigateBtn);
+            console.log('무당 영혼 조사 버튼 생성');
             break;
             
         default:
@@ -798,17 +884,19 @@ function updateGamePlayersList(players, bots) {
         }
         
         const playerName = document.createElement('span');
+        playerName.className = 'clickable-nickname';
         playerName.textContent = player.name;
+        playerName.title = '클릭하여 닉네임 복사';
+        
+        // 닉네임 클릭 이벤트 추가
+        playerName.addEventListener('click', () => {
+            copyNicknameToChat(player.name);
+        });
         
         playerStatus.appendChild(statusIndicator);
         playerStatus.appendChild(playerName);
         
-        if (player.isBot) {
-            const botBadge = document.createElement('span');
-            botBadge.className = 'player-badge bot';
-            botBadge.textContent = '봇';
-            playerStatus.appendChild(botBadge);
-        }
+        // 봇 배지는 표시하지 않음 (이름에 이미 봇이라고 포함되어 있음)
         
         // 마피아 팀원 표시
         if (isMafiaTeammate) {
@@ -834,6 +922,14 @@ function updateGamePlayersList(players, bots) {
 // 살아있는 플레이어 목록 반환 (대상 선택용)
 function getAlivePlayersForSelection(action) {
     const allPlayers = [...currentPlayers, ...currentBots];
+    
+    // 무당의 경우 죽은 플레이어만 선택 가능
+    if (action === 'spirit_investigate') {
+        return allPlayers.filter(player => {
+            return !player.alive; // 죽은 플레이어만 선택 가능
+        });
+    }
+    
     return allPlayers.filter(player => {
         if (!player.alive) return false;
         
@@ -951,7 +1047,16 @@ function showNightResults(results) {
         resultsContent.appendChild(investigateDiv);
     }
     
-    if (!results.killed && !results.saved && !results.investigated) {
+    // 조커 반격 결과를 일반 살해로 표시
+    if (results.jokerRevenge) {
+        const killedMafiaName = getPlayerNameById(results.jokerRevenge.killedMafia);
+        const killedDiv = document.createElement('div');
+        killedDiv.innerHTML = `💀 <strong>${killedMafiaName}님</strong>이 마피아에게 공격당했습니다.`;
+        killedDiv.style.color = 'var(--accent-color)';
+        resultsContent.appendChild(killedDiv);
+    }
+    
+    if (!results.killed && !results.saved && !results.investigated && !results.jokerRevenge) {
         const noEventDiv = document.createElement('div');
         noEventDiv.textContent = '조용한 밤이었습니다.';
         noEventDiv.style.color = 'var(--text-light)';
@@ -1020,8 +1125,19 @@ function handleVotingResults(data) {
             data.voteDetails.forEach(([voterId, targetId]) => {
                 const voterName = getPlayerNameById(voterId);
                 const targetName = targetId ? getPlayerNameById(targetId) : '없음';
+                
+                // 정치인 투표인지 확인
+                const isPoliticianVote = data.politicianVotes && 
+                    data.politicianVotes.some(pv => pv.voter === voterId);
+                
                 const voteLine = document.createElement('div');
-                voteLine.textContent = `• ${voterName} → ${targetName}`;
+                if (isPoliticianVote) {
+                    voteLine.textContent = `• ${voterName} → ${targetName} (1.5표)`;
+                    voteLine.style.fontWeight = 'bold';
+                    voteLine.style.color = 'var(--warning-color)';
+                } else {
+                    voteLine.textContent = `• ${voterName} → ${targetName}`;
+                }
                 resultsContent.appendChild(voteLine);
             });
         }
@@ -1392,6 +1508,47 @@ function refreshRoomList() {
     socket.emit('getRoomList');
 }
 
+// 닉네임 복사 및 채팅창에 붙여넣기 함수
+function copyNicknameToChat(nickname) {
+    try {
+        // 클립보드에 복사
+        navigator.clipboard.writeText(nickname).then(() => {
+            console.log('닉네임이 클립보드에 복사되었습니다:', nickname);
+        }).catch(err => {
+            console.log('클립보드 복사 실패:', err);
+        });
+        
+        // 현재 화면에 따라 적절한 채팅 입력창 찾기
+        let chatInput = null;
+        
+        if (screens.waiting.classList.contains('active')) {
+            // 대기실 화면
+            chatInput = document.getElementById('chatInput');
+        } else if (screens.game.classList.contains('active')) {
+            // 게임 화면 - 일반 채팅 입력창
+            chatInput = document.getElementById('gameChatInput');
+        }
+        
+        // 채팅 입력창에 닉네임 붙여넣기
+        if (chatInput && !chatInput.disabled) {
+            const currentValue = chatInput.value;
+            const newValue = currentValue ? `${currentValue} ${nickname}` : nickname;
+            chatInput.value = newValue;
+            chatInput.focus();
+            
+            // 커서를 맨 끝으로 이동
+            chatInput.setSelectionRange(newValue.length, newValue.length);
+        }
+        
+        // 성공 알림 표시
+        showToast(`${nickname} 닉네임 복사완료!`, 'success', 2000);
+        
+    } catch (error) {
+        console.error('닉네임 복사 중 오류 발생:', error);
+        showToast('닉네임 복사에 실패했습니다.', 'error', 2000);
+    }
+}
+
 // 방 목록 처리
 function handleRoomList(rooms) {
     const roomList = document.getElementById('roomList');
@@ -1557,4 +1714,226 @@ function updateTheme(phase) {
 // 봇 추가 오류 이벤트 처리
 function handleBotAddError(data) {
     showToast(data.message);
+}
+
+// === 역할 설명 시스템 ===
+
+// 역할별 설명 데이터 [[memory:3183747]]
+const roleDescriptions = {
+    'mafia': {
+        icon: '🔴',
+        title: '마피아',
+        team: '마피아팀',
+        goal: '모든 시민을 제거하여 마피아가 시민과 같거나 많아지게 하세요.',
+        ability: '밤이 되면, 마피아 팀원들과 함께 살아있는 시민 한 명을 지목하여 제거할 수 있습니다.',
+        tip: '낮에는 시민인 척 연기하고, 밤에는 팀원들과 협력하여 시민을 제거하세요. 너무 적극적으로 행동하면 의심받을 수 있어요.'
+    },
+    'police': {
+        icon: '👮',
+        title: '경찰',
+        team: '시민팀',
+        goal: '마피아를 찾아내 시민들을 승리로 이끄세요.',
+        ability: '밤이 되면, 살아있는 사람 한 명을 지목하여 그 사람이 \'마피아\'인지 아닌지 확인할 수 있습니다.',
+        tip: '당신의 정보는 매우 강력해요. 정체를 너무 빨리 밝히면 마피아의 첫 번째 목표가 될 수 있으니 조심하세요.'
+    },
+    'doctor': {
+        icon: '⚕️',
+        title: '의사',
+        team: '시민팀',
+        goal: '시민들을 치료하여 마피아의 공격으로부터 보호하세요.',
+        ability: '밤이 되면, 살아있는 사람 한 명을 지목하여 마피아의 공격으로부터 보호할 수 있습니다.',
+        tip: '중요한 역할을 가진 사람을 보호하세요. 자신을 치료할 수는 없지만, 때로는 예상 밖의 사람을 구해서 마피아를 혼란에 빠뜨릴 수도 있어요.'
+    },
+    'citizen': {
+        icon: '👥',
+        title: '시민',
+        team: '시민팀',
+        goal: '마피아를 찾아내 모두 제거하세요.',
+        ability: '특별한 능력은 없지만, 토론과 투표로 마피아를 찾아낼 수 있습니다.',
+        tip: '당신은 게임의 핵심이에요. 다른 플레이어들의 행동을 잘 관찰하고, 논리적으로 추리하여 마피아를 찾아내세요.'
+    },
+    'wizard': {
+        icon: '🧙',
+        title: '마법사',
+        team: '시민팀',
+        goal: '시민팀의 승리를 위해 전략적으로 역할을 교환하세요.',
+        ability: '밤이 되면, 다른 플레이어와 역할을 교환할 수 있습니다. 성공하면 상대방은 시민이 되고, 당신은 상대방의 역할을 얻습니다.',
+        tip: '마피아와 역할을 교환하면 큰 이득을 얻을 수 있어요. 하지만 실패하거나 잘못된 대상을 선택하면 팀에 손해가 될 수 있으니 신중하게 선택하세요.'
+    },
+    'joker': {
+        icon: '🃏',
+        title: '조커',
+        team: '시민팀 (변동 가능)',
+        goal: '시민으로 끝까지 살아남아 마피아를 찾아내거나, 마피아의 공격을 유도하여 새로운 마피아가 되어 시민을 없애세요.',
+        ability: '마피아에게 공격당하면 반격하여 공격한 마피아 중 한 명을 같이 죽이고 자신은 마피아가 됩니다.',
+        tip: '두 가지 승리 조건이 있어요. 시민으로 끝까지 살아남거나, 마피아의 공격을 받아 마피아가 되어 시민팀을 배신할 수 있습니다.'
+    },
+    'shaman': {
+        icon: '🔮',
+        title: '무당',
+        team: '시민팀',
+        goal: '죽은 자들의 정보를 활용하여 시민팀을 승리로 이끄세요.',
+        ability: '밤이 되면, 죽은 플레이어 한 명을 지목하여 그 사람의 역할을 확인할 수 있습니다.',
+        tip: '죽은 플레이어들의 역할을 파악하여 살아있는 마피아가 누구인지 추리하세요. 정보를 현명하게 활용하면 게임을 뒤바꿀 수 있어요.'
+    },
+    'politician': {
+        icon: '🏛️',
+        title: '정치인',
+        team: '시민팀',
+        goal: '영향력을 행사하여 시민팀을 승리로 이끄세요.',
+        ability: '투표 시 당신의 표는 1.5표로 계산됩니다.',
+        tip: '당신의 투표는 더 큰 영향력을 가져요. 신중하게 투표하여 시민팀에게 유리한 결과를 만들어내세요.'
+    }
+};
+
+// 역할 설명 툴팁 설정
+function setupRoleTooltip(roleElement, role) {
+    let tooltip = null;
+    let hoverTimeout = null;
+    let autoHideTimeout = null;
+
+    const showTooltip = () => {
+        // 이미 툴팁이 표시되어 있으면 리턴
+        const existingTooltip = document.querySelector('.role-tooltip.show');
+        if (existingTooltip) return;
+        
+        // 기존 툴팁 제거
+        hideTooltip();
+        
+        const description = roleDescriptions[role];
+        if (!description) return;
+
+        // 배경 오버레이 생성
+        const overlay = document.createElement('div');
+        overlay.className = 'role-tooltip-overlay';
+        
+        // 툴팁 생성
+        tooltip = document.createElement('div');
+        tooltip.className = 'role-tooltip';
+        
+        tooltip.innerHTML = `
+            <div class="role-tooltip-header">
+                <span class="role-tooltip-icon">${description.icon}</span>
+                <span class="role-tooltip-title">${description.title}</span>
+                <span class="role-tooltip-team">${description.team}</span>
+                <button class="role-tooltip-close">✕</button>
+            </div>
+            <div class="role-tooltip-section">
+                <span class="role-tooltip-label">목표</span>
+                <div class="role-tooltip-content">${description.goal}</div>
+            </div>
+            <div class="role-tooltip-section">
+                <span class="role-tooltip-label">능력</span>
+                <div class="role-tooltip-content">${description.ability}</div>
+            </div>
+            <div class="role-tooltip-section">
+                <div class="role-tooltip-tip">💡 ${description.tip}</div>
+            </div>
+        `;
+
+        // 닫기 버튼 이벤트 추가
+        const closeBtn = tooltip.querySelector('.role-tooltip-close');
+        closeBtn.addEventListener('click', hideTooltip);
+        
+        // 오버레이 클릭 시 닫기
+        overlay.addEventListener('click', hideTooltip);
+        
+        // ESC 키로 닫기
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                hideTooltip();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+
+        // body에 추가
+        document.body.appendChild(overlay);
+        document.body.appendChild(tooltip);
+        
+        // 애니메이션을 위해 약간의 지연 후 show 클래스 추가
+        setTimeout(() => {
+            if (overlay && tooltip) {
+                overlay.classList.add('show');
+                tooltip.classList.add('show');
+            }
+        }, 10);
+
+        // 호버로 열린 툴팁은 4초 후 자동으로 닫힘
+        autoHideTimeout = setTimeout(() => {
+            hideTooltip();
+        }, 4000);
+    };
+
+    const hideTooltip = () => {
+        // 타이머 정리
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+        if (autoHideTimeout) {
+            clearTimeout(autoHideTimeout);
+            autoHideTimeout = null;
+        }
+
+        const currentOverlay = document.querySelector('.role-tooltip-overlay');
+        const currentTooltip = document.querySelector('.role-tooltip');
+        
+        if (currentOverlay) currentOverlay.classList.remove('show');
+        if (currentTooltip) currentTooltip.classList.remove('show');
+        
+        setTimeout(() => {
+            if (currentOverlay && currentOverlay.parentNode) {
+                currentOverlay.parentNode.removeChild(currentOverlay);
+            }
+            if (currentTooltip && currentTooltip.parentNode) {
+                currentTooltip.parentNode.removeChild(currentTooltip);
+            }
+            tooltip = null;
+        }, 300);
+    };
+
+    // 마우스 호버 이벤트 (지연 후 표시)
+    roleElement.addEventListener('mouseenter', () => {
+        // 기존 타이머 취소
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+        }
+        
+        // 0.5초 후에 툴팁 표시
+        hoverTimeout = setTimeout(() => {
+            showTooltip();
+        }, 500);
+    });
+
+    roleElement.addEventListener('mouseleave', () => {
+        // 호버 타이머 취소 (툴팁이 아직 표시되지 않았다면)
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+    });
+
+    // 클릭 이벤트 (즉시 토글)
+    roleElement.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // 호버 타이머 취소
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+        
+        // 현재 표시된 툴팁이 있는지 확인
+        const currentTooltip = document.querySelector('.role-tooltip.show');
+        
+        if (currentTooltip) {
+            hideTooltip();
+        } else {
+            showTooltip();
+        }
+    });
+
+
 } 
