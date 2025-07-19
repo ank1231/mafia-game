@@ -1555,9 +1555,28 @@ function copyNicknameToChat(nickname) {
 }
 
 // 방 목록 처리
-function handleRoomList(rooms) {
+function handleRoomList(data) {
     const roomList = document.getElementById('roomList');
+    const waitingPlayersElement = document.getElementById('waitingPlayers');
     
+    // 이전 버전 호환성을 위한 처리
+    if (Array.isArray(data)) {
+        // 이전 형식: 배열로 직접 전송된 경우
+        updateRoomListUI(data, roomList);
+        waitingPlayersElement.textContent = '0명';
+        return;
+    }
+    
+    // 새 형식: 객체로 전송된 경우
+    const { rooms, totalWaitingPlayers } = data;
+    updateRoomListUI(rooms, roomList);
+    
+    // 대기중인 총 인원 수 업데이트
+    waitingPlayersElement.textContent = `${totalWaitingPlayers}명`;
+}
+
+// 방 목록 UI 업데이트 (분리된 함수)
+function updateRoomListUI(rooms, roomList) {
     if (rooms.length === 0) {
         roomList.innerHTML = '<div class="no-rooms">아직 생성된 방이 없습니다.</div>';
         return;

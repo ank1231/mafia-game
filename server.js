@@ -5441,6 +5441,8 @@ class MafiaGame {
     // 공개방 목록 반환
     getRoomList() {
         const publicRooms = [];
+        let totalWaitingPlayers = 0; // 대기중인 총 인원 수
+        
         for (const [roomCode, room] of this.rooms) {
             const totalPlayers = room.players.size + room.bots.size;
             const hostPlayer = room.players.get(room.host);
@@ -5448,6 +5450,11 @@ class MafiaGame {
             // 게임 상태 정보
             const gameStatus = room.gameStarted ? '플레이중' : '대기중';
             const canJoin = !room.gameStarted && totalPlayers < room.maxPlayers;
+            
+            // 대기중인 방의 인원 수만 계산 (게임 중인 방 제외)
+            if (!room.gameStarted) {
+                totalWaitingPlayers += totalPlayers;
+            }
             
             publicRooms.push({
                 roomCode: roomCode,
@@ -5459,7 +5466,11 @@ class MafiaGame {
                 canJoin: canJoin
             });
         }
-        return publicRooms;
+        
+        return {
+            rooms: publicRooms,
+            totalWaitingPlayers: totalWaitingPlayers
+        };
     }
 
     // 도배 방지 시스템
@@ -5523,8 +5534,8 @@ io.on('connection', (socket) => {
 
     // 방 목록 요청
     socket.on('getRoomList', () => {
-        const roomList = game.getRoomList();
-        socket.emit('roomList', roomList);
+        const roomListData = game.getRoomList();
+        socket.emit('roomList', roomListData);
     });
 
     // 방 생성

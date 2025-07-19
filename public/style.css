@@ -212,6 +212,55 @@ input::placeholder {
     max-width: 450px;
 }
 
+/* 로비 통계 표시 */
+.lobby-stats {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+    border: 1px solid var(--border-accent);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.lobby-stats::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.stat-icon {
+    font-size: 18px;
+    filter: drop-shadow(0 0 8px rgba(0, 255, 255, 0.5));
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.stat-value {
+    color: var(--accent-cyan);
+    font-weight: 700;
+    font-size: 16px;
+    text-shadow: var(--glow-cyan);
+    padding: 2px 8px;
+    background: rgba(0, 255, 255, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+}
+
 .input-group {
     margin-bottom: 20px;
 }
