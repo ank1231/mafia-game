@@ -324,8 +324,12 @@ class BotAI {
         }
 
         // 🆕 봇 반응형 채팅 트리거 - 실제 플레이어 발언에만 반응
+        console.log(`[반응형 채팅 검사] 메시지 타입: ${messageData.type}, 방 존재: ${!!room}, 플레이어ID: ${messageData.playerId}, 봇인가: ${this.isBot(messageData.playerId, room)}`);
         if (messageData.type === 'player' && room && !this.isBot(messageData.playerId, room)) {
+            console.log(`[반응형 채팅 트리거] 조건 만족! 메시지: "${messageData.message}"`);
             this.triggerReactiveBotChats(room, chatMessage);
+        } else {
+            console.log(`[반응형 채팅 건너뛰기] 조건 불만족`);
         }
 
         console.log(`[채팅 히스토리] 메시지 저장: ${messageData.playerName || '시스템'}: ${messageData.message}`);
@@ -4261,9 +4265,20 @@ class BotAI {
     // 🆕 반응형 봇 채팅 트리거 (🚨 수정: 각 봇별로 개별 타겟 검사)
     triggerReactiveBotChats(room, chatMessage) {
         const aliveBots = Array.from(room.bots.values()).filter(bot => bot.alive);
-        if (!aliveBots.length) return;
+        console.log(`[반응형 채팅 시작] 방코드: ${room.code}, 살아있는 봇 수: ${aliveBots.length}, 메시지: "${chatMessage.message}"`);
+        console.log(`[살아있는 봇 목록] ${aliveBots.map(bot => `${bot.name}(${bot.id})`).join(', ')}`);
+        if (!aliveBots.length) {
+            console.log(`[반응형 채팅 종료] 살아있는 봇이 없음`);
+            return;
+        }
 
-        // 🚨 **핵심**: 각 봇별로 개별적으로 타겟 검사 (자기 자신 제외)
+        // 🚨 **핵심**: 전체 타겟 목록을 먼저 찾고, 각 봇별로 자기가 타겟되었는지 확인
+        console.log(`[게임 상태 확인] 현재 게임 상태: ${room.gameState}, 메시지 페이즈: ${chatMessage.gamePhase}`);
+        
+        // 🔧 **수정**: 전체 타겟 목록을 한 번만 계산
+        const allTargetedBots = this.findTargetedBots(chatMessage, room, aliveBots, null);
+        console.log(`[전체 타겟 결과] 타겟된 봇들: [${allTargetedBots.map(bot => bot.name).join(', ')}]`);
+        
         aliveBots.forEach((bot, index) => {
             // 봇이 자기 자신의 메시지에 응답하지 않도록 체크
             if (bot.id === chatMessage.playerId) {
@@ -4271,18 +4286,18 @@ class BotAI {
                 return;
             }
             
-            // 각 봇별로 개별적으로 타겟 확인 (자기 자신은 제외)
-            const targetedBots = this.findTargetedBots(chatMessage, room, aliveBots, bot);
-            const isTargeted = targetedBots.some(targetBot => targetBot.id === bot.id);
+            // 🔧 **수정**: 이 봇이 타겟되었는지 확인
+            const isTargeted = allTargetedBots.some(targetBot => targetBot.id === bot.id);
+            console.log(`[${bot.name} 타겟 결과] 타겟됨: ${isTargeted}`);
             
             if (isTargeted) {
-                const delay = 2000 + (index * 1000) + Math.random() * 2000; // 2-5초 사이 응답
+                const delay = 800 + (index * 500) + Math.random() * 1200; // 0.8-2.5초 사이 응답 (빠른 반응)
                 
                 setTimeout(() => {
                     if (room.gameState === chatMessage.gamePhase && bot.alive) {
                         const responseMessage = this.generateReactiveResponse(room, bot, chatMessage);
                         if (responseMessage) {
-                            console.log(`[반응형 채팅] ${bot.name}: "${chatMessage.message}"에 대한 응답 생성`);
+                            console.log(`[반응형 채팅] ${bot.name}: "${chatMessage.message}"에 대한 응답 - "${responseMessage}"`);
                             
                             // 반응형 채팅 메시지 전송
                             this.addChatMessage(room.code, {
@@ -4300,7 +4315,11 @@ class BotAI {
                                 message: responseMessage,
                                 timestamp: new Date()
                             });
+                        } else {
+                            console.log(`[반응형 채팅 실패] ${bot.name}: 응답 생성 실패 - "${chatMessage.message}"`);
                         }
+                    } else {
+                        console.log(`[반응형 채팅 취소] ${bot.name}: 게임 상태 변경됨 (${room.gameState} != ${chatMessage.gamePhase}) 또는 봇이 죽음`);
                     }
                 }, delay);
             }
@@ -4338,22 +4357,20 @@ class BotAI {
         }
     }
 
-    // 🆕 타겟이 된 봇들 찾기 (🚨 수정: 각 봇별로 개별 검사)
+    // 🆕 타겟이 된 봇들 찾기 (🔧 수정: excludeBot 제거)
     findTargetedBots(chatMessage, room, aliveBots, excludeBot = null) {
         const message = chatMessage.message.toLowerCase();
         const targetedBots = [];
         
         // 1. 직접 이름 언급
         for (const bot of aliveBots) {
-            // 🚨 **핵심**: 제외할 봇이 있으면 제외
-            if (excludeBot && bot.id === excludeBot.id) continue;
-            
             if (message.includes(bot.name.toLowerCase())) {
                 targetedBots.push(bot);
+                console.log(`[타겟 감지] 직접 이름 언급: ${bot.name}`);
             }
         }
         
-        // 2. 특정 패턴의 질문이나 비난
+        // 2. 특정 패턴의 질문이나 비난 (🔧 개선: 더 포괄적인 패턴)
         const accusationPatterns = [
             /너.*거짓말/,
             /넌.*거짓말/,
@@ -4368,24 +4385,41 @@ class BotAI {
             /넌.*수상/,
             /대답해/,
             /설명해/,
-            /해명해/
+            /해명해/,
+            // 🆕 추가 패턴들
+            /의심스러워/,
+            /수상해/,
+            /이상해/,
+            /마피아야?/,
+            /마피아지?/,
+            /마피아인가?/,
+            /마피아 같/,
+            /거짓말하/,
+            /거짓말 하/,
+            /믿을 수 없/,
+            /신뢰 안/,
+            /의심해/,
+            /의심함/,
+            /수상함/,
+            /이상함/,
+            /문제있/,
+            /문제 있/
         ];
         
         // 패턴 매칭으로 타겟이 된 봇 찾기 (이름 언급이 없는 경우)
         if (targetedBots.length === 0) {
             for (const pattern of accusationPatterns) {
                 if (pattern.test(message)) {
+                    console.log(`[타겟 감지] 패턴 매칭: "${pattern}" - "${message}"`);
                     // 가장 최근에 발언한 봇을 타겟으로 선정 (🚨 수정: 제외할 봇 고려)
                     const recentBotMessages = this.getRecentBotMessages(room, 3);
                     if (recentBotMessages.length > 0) {
                         for (const recentMessage of recentBotMessages) {
                             const recentBot = aliveBots.find(bot => bot.id === recentMessage.playerId);
                             if (recentBot && !targetedBots.includes(recentBot)) {
-                                // 🚨 **핵심**: 제외할 봇이 아닌 경우에만 타겟으로 선정
-                                if (!excludeBot || recentBot.id !== excludeBot.id) {
-                                    targetedBots.push(recentBot);
-                                    break; // 첫 번째 적합한 봇만 타겟으로
-                                }
+                                targetedBots.push(recentBot);
+                                console.log(`[타겟 감지] 최근 발언자 타겟: ${recentBot.name}`);
+                                break; // 첫 번째 적합한 봇만 타겟으로
                             }
                         }
                     }
@@ -4393,7 +4427,25 @@ class BotAI {
                 }
             }
         }
-        
+
+        // 🆕 아무도 타겟되지 않았을 때 추가 검사 (의심 관련 키워드가 있으면 모든 봇이 약간 반응)
+        if (targetedBots.length === 0) {
+            const suspicionKeywords = ['의심', '수상', '이상', '마피아', '거짓말'];
+            const hasSuspicionKeyword = suspicionKeywords.some(keyword => message.includes(keyword));
+            
+            if (hasSuspicionKeyword) {
+                // 30% 확률로 랜덤 봇이 반응 (너무 많은 반응 방지)
+                if (Math.random() < 0.3) {
+                    if (aliveBots.length > 0) {
+                        const randomBot = aliveBots[Math.floor(Math.random() * aliveBots.length)];
+                        targetedBots.push(randomBot);
+                        console.log(`[타겟 감지] 의심 키워드로 랜덤 타겟: ${randomBot.name}`);
+                    }
+                }
+            }
+        }
+
+        console.log(`[타겟 감지 결과] 메시지: "${chatMessage.message}" → 타겟된 봇들: [${targetedBots.map(bot => bot.name).join(', ')}]`);
         return targetedBots;
     }
 
@@ -4414,18 +4466,42 @@ class BotAI {
         const senderName = originalMessage.playerName;
         
         // 역할별 방어 전략
+        let response = null;
         switch (bot.role) {
             case 'mafia':
-                return this.generateMafiaDefense(room, bot, message, senderName);
+                response = this.generateMafiaDefense(room, bot, message, senderName);
+                break;
             case 'police':
-                return this.generatePoliceDefense(room, bot, message, senderName);
+                response = this.generatePoliceDefense(room, bot, message, senderName);
+                break;
             case 'doctor':
-                return this.generateDoctorDefense(room, bot, message, senderName);
+                response = this.generateDoctorDefense(room, bot, message, senderName);
+                break;
             case 'citizen':
-                return this.generateCitizenDefense(room, bot, message, senderName);
+                response = this.generateCitizenDefense(room, bot, message, senderName);
+                break;
             default:
-                return this.generateGenericDefense(bot, message, senderName);
+                response = this.generateGenericDefense(bot, message, senderName);
+                break;
         }
+        
+        // 🆕 응답 생성 실패 시 기본 응답 제공
+        if (!response) {
+            const defaultResponses = [
+                `${senderName} 뭔 소리임?`,
+                `아니 왜 나 의심함?`,
+                `나 진짜 시민인뎅...`,
+                `증거 있어서 그러는거임?`,
+                `억울하네 진짜 ㅅㅂ`,
+                `아 진짜 답답해`,
+                `왜 나만 의심함 ㅗㅗ`,
+                `말도 안되는 소리네`
+            ];
+            response = defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+            console.log(`[기본 응답 사용] ${bot.name}: 역할별 응답 실패, 기본 응답 사용`);
+        }
+        
+        return response;
     }
 
     // 🆕 마피아 봇 방어 응답 (디시인사이드 말투)
@@ -4651,6 +4727,7 @@ class MafiaGame {
         
         // 🚨 **추가**: 방에 들어가면 로비에서 제거
         this.lobbyPlayers.delete(hostSocketId);
+        console.log(`[로비 제거] ${hostSocketId} 방 생성으로 제거됨. 현재 로비 인원: ${this.lobbyPlayers.size}`);
 
         return room;
     }
@@ -4701,6 +4778,7 @@ class MafiaGame {
         
         // 🚨 **추가**: 방에 들어가면 로비에서 제거
         this.lobbyPlayers.delete(socketId);
+        console.log(`[로비 제거] ${socketId} 방 참가로 제거됨. 현재 로비 인원: ${this.lobbyPlayers.size}`);
 
         return room;
     }
@@ -5553,6 +5631,7 @@ io.on('connection', (socket) => {
     
     // 🚨 **추가**: 새 플레이어를 로비에 추가
     game.lobbyPlayers.add(socket.id);
+    console.log(`[로비 추가] ${socket.id} 추가됨. 현재 로비 인원: ${game.lobbyPlayers.size}`);
     
     // 로비 인원 수 변경 알림
     io.emit('roomListUpdate');
@@ -5673,9 +5752,11 @@ io.on('connection', (socket) => {
             return;
         }
         
+        console.log(`[봇 추가 시도] ${socket.id}가 ${botName} 봇 추가 시도. 현재 로비 인원: ${game.lobbyPlayers.size}`);
         const result = game.addBot(playerInfo.roomCode, botName);
         
         if (result && !result.error) {
+            console.log(`[봇 추가 성공] ${botName} 봇 추가 완료. 로비 인원 변화 없음: ${game.lobbyPlayers.size}`);
             io.to(playerInfo.roomCode).emit('playerListUpdate', {
                 players: Array.from(room.players.values()),
                 bots: Array.from(room.bots.values()),
@@ -5687,8 +5768,8 @@ io.on('connection', (socket) => {
                 message: `${botName}님이 추가되었습니다.`
             });
             
-            // 모든 클라이언트에게 방 목록 업데이트 알림
-            io.emit('roomListUpdate');
+            // 🚨 **수정**: 봇 추가는 로비 인원 수와 무관하므로 roomListUpdate 생략
+            // (로비 인원 수는 변경되지 않으므로 불필요한 업데이트 방지)
         } else if (result && result.error === 'name_duplicate') {
             socket.emit('botAddError', {
                 message: '같은 이름의 플레이어 또는 봇이 이미 방에 있습니다. 다른 이름을 사용해주세요.'
@@ -5718,8 +5799,8 @@ io.on('connection', (socket) => {
                 message: `${result.removedBot.name}님이 제거되었습니다.`
             });
             
-            // 모든 클라이언트에게 방 목록 업데이트 알림
-            io.emit('roomListUpdate');
+            // 🚨 **수정**: 봇 제거도 로비 인원 수와 무관하므로 roomListUpdate 생략
+            // (로비 인원 수는 변경되지 않으므로 불필요한 업데이트 방지)
         } else if (result && result.error === 'no_bots') {
             socket.emit('botAddError', {
                 message: '제거할 봇이 없습니다.'
@@ -6137,8 +6218,10 @@ io.on('connection', (socket) => {
     // 연결 해제
     socket.on('disconnect', () => {
         console.log('플레이어 연결 해제:', socket.id);
+        console.log(`[연결 해제 전] 로비 인원: ${game.lobbyPlayers.size}`);
         
         const room = game.removePlayer(socket.id);
+        console.log(`[연결 해제 후] 로비 인원: ${game.lobbyPlayers.size}`);
         if (room) {
             io.to(room.code).emit('playerListUpdate', {
                 players: Array.from(room.players.values()),
