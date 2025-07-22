@@ -443,63 +443,9 @@ function setMaxPlayers() {
 function addBot() {
     if (!isHost) return;
     
-    // 재미있는 봇 이름 목록
-    const funnyBotNames = [
-        '너마피아잖아',
-        '말투가찐인데',
-        '니가뭘할수있는데',
-        '몰루',
-        '어어딜가노',
-        '조용한놈이수상함',
-        '이게맞냐',
-        '목소리큰놈이범인',
-        '말없으면마피아',
-        '아니라고했잖아',
-        '선동과날조',
-        '과몰입금지',
-        '쟤가범인임',
-        '이번판은졌네',
-        '의사야힐좀줘라',
-        '경찰이일을안함',
-        '형은다알고있다',
-        '지령내리지마라',
-        '니가더수상함',
-        '어차피죽을목숨',
-        '증거있냐고',
-        '무지성투표ㄱㄱ',
-        '딱보니까알겠네',
-        '아니면어쩔건데',
-        '이길생각없음',
-        '빨리좀죽여줘',
-        '투표하기싫어',
-        '그냥다죽자',
-        '억까하지마라',
-        '뇌는장식임',
-        '죽으면그만이야',
-        '닉네임이수상함',
-        '쟤부터죽여보죠',
-        '대충투표함',
-        '말많으면시민임'
-    ];
-    
-    // 이미 사용된 이름들 수집 (플레이어 + 봇)
-    const usedNames = new Set();
-    currentPlayers.forEach(player => usedNames.add(player.name));
-    currentBots.forEach(bot => usedNames.add(bot.name));
-    
-    // 사용 가능한 이름 필터링
-    const availableNames = funnyBotNames.filter(name => !usedNames.has(name));
-    
-    let botName;
-    if (availableNames.length > 0) {
-        // 사용 가능한 재미있는 이름 중 랜덤 선택
-        const randomIndex = Math.floor(Math.random() * availableNames.length);
-        botName = availableNames[randomIndex];
-    } else {
-        // 모든 재미있는 이름이 사용된 경우 기본 이름 사용
-        const botCount = currentBots.length + 1;
-        botName = `봇${botCount}`;
-    }
+    // 간단한 번호 기반 봇 이름 생성
+    const botCount = currentBots.length + 1;
+    const botName = `봇${botCount}`;
     
     socket.emit('addBot', { botName });
 }

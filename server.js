@@ -2443,7 +2443,7 @@ class BotAI {
         return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : "계속 수사할게";
     }
 
-    // 무당 봇 메시지 생성 (자연스러운 반말)
+    // 무당 봇 메시지 생성 (자연스럽고 상호작용적인 반말)
     createShamanMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
         const analysis = this.performAdvancedDeduction(room, bot);
         
@@ -2451,16 +2451,16 @@ class BotAI {
             return this.createSmartShamanMessage(room, bot, phase, context, analysis);
         }
         
-        // 기존 로직 fallback (자연스러운 반말)
+        // 기존 로직 fallback (상호작용적이고 자연스러운 반말)
         const messages = [
-            "영혼들이 말해줄 거야",
-            "죽은 사람들의 진실을 알 수 있어",
-            "영혼 조사 결과 알려줄게",
-            "내가 무당이야, 믿어줘",
-            "죽은 사람들의 역할을 볼 수 있어",
-            "영혼의 목소리를 들어봐",
-            "무당의 힘으로 진실을 찾을게",
-            "죽은 사람들이 답을 줄 거야"
+            "야 나 무당인데 죽은 사람 역할 알 수 있어",
+            "죽은 놈들 조사해서 알려줄게",
+            "내가 무당이니까 내 말 믿어봐",
+            "죽은 사람들 역할 확인했는데 중요해",
+            "다들 들어봐, 내가 조사한 결과야",
+            "무당 능력으로 확인한 거 말해줄게",
+            "이거 진짜 중요한 정보인데 들어볼래?",
+            "죽은 사람 역할 봤는데 이상해"
         ];
         
         return messages[Math.floor(Math.random() * messages.length)];
@@ -2501,12 +2501,12 @@ class BotAI {
                         console.log(`[무당 결과 발표] ${bot.name}: ${targetName}의 역할 ${roleDisplayName} 발표`);
                         
                         const spiritAnnouncements = [
-                            `영혼이 말해줬어! ${targetName}은 ${roleDisplayName}이었어!`,
-                            `${targetName}의 영혼을 조사했어, ${roleDisplayName}이었다고!`,
-                            `무당의 힘으로 알아냈어. ${targetName}은 ${roleDisplayName}!`,
-                            `${targetName} 영혼이 자신의 역할을 알려줬어, ${roleDisplayName}!`,
-                            `죽은 ${targetName}는 진짜 ${roleDisplayName}였어!`,
-                            `영혼 조사 결과 나왔어! ${targetName} = ${roleDisplayName}!`
+                            `야 중요한 정보! ${targetName}은 ${roleDisplayName}이었어!`,
+                            `${targetName} 조사해봤는데 ${roleDisplayName}이었다고`,
+                            `내가 확인했어. ${targetName}은 ${roleDisplayName}이 맞아!`,
+                            `다들 들어봐! ${targetName} 진짜 역할은 ${roleDisplayName}!`,
+                            `무당으로서 확실히 말하는데 ${targetName}는 ${roleDisplayName}이었어`,
+                            `조사 결과 나왔어! ${targetName} = ${roleDisplayName}임!`
                         ];
                         return spiritAnnouncements[Math.floor(Math.random() * spiritAnnouncements.length)];
                     }
@@ -2519,31 +2519,31 @@ class BotAI {
         // 무당 역할 주장 (영혼 조사 결과가 없는 경우)
         if (phase === 'discussion' && Math.random() < 0.3) {
             const roleClaimMessages = [
-                "나 무당이야. 죽은 사람들 역할 알 수 있어",
-                "내가 무당이니까 믿어줘",
-                "무당인 나만 믿어",
-                "나 진짜 무당이야, 영혼 조사했어",
-                "무당으로서 말하는데 중요한 정보야",
-                "내가 무당이니까 내 말 들어봐"
+                "야 나 무당인데 죽은 놈들 역할 다 볼 수 있어",
+                "내가 무당이니까 내 말 좀 믿어봐",
+                "무당 능력 있다고 진짜로",
+                "나 무당이야, 죽은 사람들 조사 가능해",
+                "무당으로서 말하는 건데 이거 중요함",
+                "내가 무당이니까 내 정보 들어봐"
             ];
             messages.push(roleClaimMessages[Math.floor(Math.random() * roleClaimMessages.length)]);
         }
         
         // 죽은 사람들에 대한 언급
         if (phase === 'discussion') {
-            messages.push("죽은 사람들이 진실을 알려줄 거야");
-            messages.push("영혼들의 목소리를 들어보자");
-            messages.push("무당의 힘으로 진실을 찾을게");
-            messages.push("다음에 죽는 사람의 영혼도 조사할게");
-            messages.push("더 많은 영혼들이 진실을 말해줄 거야");
-            messages.push("죽은 사람들의 역할이 중요한 단서야");
+            messages.push("죽은 사람들 역할 보고 판단해야지");
+            messages.push("내가 조사한 정보들 참고해봐");
+            messages.push("무당 정보 활용하면 마피아 찾을 수 있어");
+            messages.push("다음에 누가 죽으면 또 조사해줄게");
+            messages.push("죽은 놈들 역할 더 알아보자");
+            messages.push("이미 죽은 사람들 역할이 중요한 단서야");
         } else if (phase === 'voting') {
-            messages.push("영혼들이 알려준 정보로 투표하자");
-            messages.push("죽은 사람들의 역할을 참고해야 해");
-            messages.push("무당이 본 진실을 믿어줘");
+            messages.push("내가 알려준 정보 보고 투표해");
+            messages.push("죽은 사람들 역할 참고해서 투표하자");
+            messages.push("무당 정보 믿고 투표해봐");
         }
         
-        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : "영혼들과 소통할게";
+        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : "죽은 사람들 더 조사해볼게";
     }
 
     // 역할 표시명 반환 (무당 봇용)
@@ -2694,10 +2694,21 @@ class BotAI {
         const chattedSuspiciousPlayers = this.filterPlayersWhoChatted(room.code, filteredSuspiciousPlayers);
         if (chattedSuspiciousPlayers.length > 0) {
             const target = chattedSuspiciousPlayers[0];
+            
+            // 🔧 **수정**: 실제 모순 발언이 있는지 확인  
+            const targetContradictions = this.checkPlayerContradictions(room.code, target.player.id);
+            
             messages.push(`${target.player.name} 좀 의심스럽네`);
             messages.push(`${target.player.name} 어떻게 생각해?`);
             messages.push(`${target.player.name} 행동이 이상하지 않아?`);
-            messages.push(`${target.player.name} 말이 앞뒤가 안 맞는 것 같은데`);
+            
+            // 실제 모순이 있을 때만 "말이 앞뒤 안 맞는다" 언급
+            if (targetContradictions.length > 0) {
+                messages.push(`${target.player.name} 말이 앞뒤가 안 맞는 것 같은데`);
+                console.log(`[모순 발언 감지] ${bot.name}: ${target.player.name}의 실제 모순 발견 - ${targetContradictions[0].description}`);
+            } else {
+                messages.push(`${target.player.name} 뭔가 수상한 느낌이야`);
+            }
         }
         
         return messages[Math.floor(Math.random() * messages.length)];
@@ -2775,21 +2786,57 @@ class BotAI {
         
         if (innocentTargets.length > 0) {
             const target = innocentTargets[0];
+            
+            // 🔧 **수정**: 실제 모순 발언이 있는지 확인
+            const targetContradictions = this.checkPlayerContradictions(room.code, target.playerId);
+            
             messages.push(`${target.playerName} 좀 의심스럽지 않아?`);
             messages.push(`${target.playerName} 행동이 이상한데?`);
             messages.push(`${target.playerName} 뭔가 수상해`);
-            messages.push(`${target.playerName} 말이 앞뒤가 안 맞는 것 같은데`);
+            
+            // 실제 모순이 있을 때만 "말이 앞뒤 안 맞는다" 언급
+            if (targetContradictions.length > 0) {
+                messages.push(`${target.playerName} 말이 앞뒤가 안 맞는 것 같은데`);
+                console.log(`[모순 발언 감지] ${bot.name}: ${target.playerName}의 실제 모순 발견 - ${targetContradictions[0].description}`);
+            } else {
+                messages.push(`${target.playerName} 뭔가 느낌이 안 좋아`);
+            }
         }
         
-        // 경찰/의사 주장자 의심 (교묘하게 의심 유도)
-        const specialRoleClaimants = Array.from(analysis.playerProfiles.values())
-            .filter(p => p.suspectedRole === 'police' || p.suspectedRole === 'doctor');
+        // 🔧 **수정**: 실제로 역할을 주장한 플레이어만 의심 (추론이 아닌 실제 주장 기반)
+        const history = this.gameHistory.get(room.code);
+        const actualRoleClaimants = [];
         
-        if (specialRoleClaimants.length > 0) {
-            const target = specialRoleClaimants[0];
-            messages.push(`${target.playerName} 역할 주장이 좀... 의심스럽지 않아?`);
-            messages.push(`진짜 ${target.playerName} 믿어도 될까?`);
-            messages.push(`${target.playerName} 증거가 좀 부족한 것 같은데`);
+        if (history && history.playerStatements) {
+            for (const [playerId, profile] of analysis.playerProfiles) {
+                const statements = history.playerStatements.get(playerId);
+                if (statements && statements.roleClaims && statements.roleClaims.length > 0) {
+                    const hasSpecialRoleClaim = statements.roleClaims.some(claim => 
+                        claim.role === 'police' || claim.role === 'doctor'
+                    );
+                    
+                    if (hasSpecialRoleClaim) {
+                        actualRoleClaimants.push({
+                            profile: profile,
+                            claimedRoles: statements.roleClaims.filter(claim => 
+                                claim.role === 'police' || claim.role === 'doctor'
+                            )
+                        });
+                    }
+                }
+            }
+        }
+        
+        if (actualRoleClaimants.length > 0) {
+            const target = actualRoleClaimants[0];
+            const claimedRole = target.claimedRoles[0].role;
+            const roleDisplayName = claimedRole === 'police' ? '경찰' : '의사';
+            
+            console.log(`[마피아 역할 주장 의심] ${bot.name}: ${target.profile.playerName}의 실제 ${roleDisplayName} 주장을 의심`);
+            
+            messages.push(`${target.profile.playerName} ${roleDisplayName} 주장이 좀... 의심스럽지 않아?`);
+            messages.push(`진짜 ${target.profile.playerName} ${roleDisplayName} 맞을까?`);
+            messages.push(`${target.profile.playerName} 증거가 좀 부족한 것 같은데`);
         }
         
         // 시민 진영 분열 유도 (교묘하게)
@@ -4370,70 +4417,84 @@ class BotAI {
             }
         }
         
-        // 2. 특정 패턴의 질문이나 비난 (🔧 개선: 더 포괄적인 패턴)
-        const accusationPatterns = [
-            /너.*거짓말/,
-            /넌.*거짓말/,
-            /왜.*의심/,
-            /너.*의심/,
-            /넌.*의심/,
-            /너.*마피아/,
-            /넌.*마피아/,
-            /너.*이상/,
-            /넌.*이상/,
-            /너.*수상/,
-            /넌.*수상/,
-            /대답해/,
-            /설명해/,
-            /해명해/,
-            // 🆕 추가 패턴들
-            /의심스러워/,
-            /수상해/,
-            /이상해/,
-            /마피아야?/,
-            /마피아지?/,
-            /마피아인가?/,
-            /마피아 같/,
-            /거짓말하/,
-            /거짓말 하/,
-            /믿을 수 없/,
-            /신뢰 안/,
-            /의심해/,
-            /의심함/,
-            /수상함/,
-            /이상함/,
-            /문제있/,
-            /문제 있/
-        ];
-        
-        // 패턴 매칭으로 타겟이 된 봇 찾기 (이름 언급이 없는 경우)
+        // 2. 🔧 **핵심 수정**: 패턴 매칭 전에 일반적인 외침인지 먼저 확인
         if (targetedBots.length === 0) {
-            for (const pattern of accusationPatterns) {
-                if (pattern.test(message)) {
-                    console.log(`[타겟 감지] 패턴 매칭: "${pattern}" - "${message}"`);
-                    // 가장 최근에 발언한 봇을 타겟으로 선정 (🚨 수정: 제외할 봇 고려)
-                    const recentBotMessages = this.getRecentBotMessages(room, 3);
-                    if (recentBotMessages.length > 0) {
-                        for (const recentMessage of recentBotMessages) {
-                            const recentBot = aliveBots.find(bot => bot.id === recentMessage.playerId);
-                            if (recentBot && !targetedBots.includes(recentBot)) {
-                                targetedBots.push(recentBot);
-                                console.log(`[타겟 감지] 최근 발언자 타겟: ${recentBot.name}`);
-                                break; // 첫 번째 적합한 봇만 타겟으로
+            // 먼저 일반적인 외침인지 확인
+            const isGeneralExclamation = this.isGeneralExclamation(message);
+            if (isGeneralExclamation) {
+                console.log(`[타겟 감지 제외] "${message}"는 일반적인 외침이므로 타겟 감지 중단`);
+                // 일반적인 외침이면 더 이상 타겟 감지하지 않음
+            } else {
+                // 일반적인 외침이 아닐 때만 패턴 매칭 진행
+                const accusationPatterns = [
+                    /너.*거짓말/,
+                    /넌.*거짓말/,
+                    /왜.*의심/,
+                    /너.*의심/,
+                    /넌.*의심/,
+                    /너.*마피아/,
+                    /넌.*마피아/,
+                    /너.*이상/,
+                    /넌.*이상/,
+                    /너.*수상/,
+                    /넌.*수상/,
+                    /대답해/,
+                    /설명해/,
+                    /해명해/,
+                    // 🆕 추가 패턴들 (일반적인 외침 제외)
+                    /의심스러워/,
+                    /수상해/,
+                    /이상해/,
+                    /마피아 같/,
+                    /거짓말하/,
+                    /거짓말 하/,
+                    /믿을 수 없/,
+                    /신뢰 안/,
+                    /의심해/,
+                    /의심함/,
+                    /수상함/,
+                    /이상함/,
+                    /문제있/,
+                    /문제 있/
+                ];
+                
+                // 패턴 매칭으로 타겟이 된 봇 찾기
+                for (const pattern of accusationPatterns) {
+                    if (pattern.test(message)) {
+                        console.log(`[타겟 감지] 패턴 매칭: "${pattern}" - "${message}"`);
+                        // 가장 최근에 발언한 봇을 타겟으로 선정
+                        const recentBotMessages = this.getRecentBotMessages(room, 3);
+                        if (recentBotMessages.length > 0) {
+                            for (const recentMessage of recentBotMessages) {
+                                const recentBot = aliveBots.find(bot => bot.id === recentMessage.playerId);
+                                if (recentBot && !targetedBots.includes(recentBot)) {
+                                    targetedBots.push(recentBot);
+                                    console.log(`[타겟 감지] 최근 발언자 타겟: ${recentBot.name}`);
+                                    break; // 첫 번째 적합한 봇만 타겟으로
+                                }
                             }
                         }
+                        break;
                     }
-                    break;
                 }
             }
         }
 
-        // 🆕 아무도 타겟되지 않았을 때 추가 검사 (의심 관련 키워드가 있으면 모든 봇이 약간 반응)
-        if (targetedBots.length === 0) {
-            const suspicionKeywords = ['의심', '수상', '이상', '마피아', '거짓말'];
-            const hasSuspicionKeyword = suspicionKeywords.some(keyword => message.includes(keyword));
+            // 🆕 아무도 타겟되지 않았을 때 추가 검사 (🔧 수정: 일반적인 외침 제외)
+    if (targetedBots.length === 0) {
+        const suspicionKeywords = ['의심', '수상', '이상', '마피아', '거짓말'];
+        const hasSuspicionKeyword = suspicionKeywords.some(keyword => message.includes(keyword));
+        
+        if (hasSuspicionKeyword) {
+            // 🔧 **핵심 수정**: 일반적인 외침인지 먼저 확인 (이미 위에서 체크했지만 재확인)
+            const isGeneralExclamation = this.isGeneralExclamation(message);
+            const mentionedPlayerName = this.extractPlayerName(message, room);
+            const isTargetingSpecificPlayer = this.isTargetingSpecificPlayer(message, room);
             
-            if (hasSuspicionKeyword) {
+            console.log(`[타겟 감지 분석] 메시지: "${chatMessage.message}", 일반 외침: ${isGeneralExclamation}, 언급된 플레이어: "${mentionedPlayerName}", 특정 플레이어 타겟: ${isTargetingSpecificPlayer}`);
+            
+            // 일반적인 외침이 아니면서, 특정 플레이어를 지목하지 않는 의심 표현일 때만 봇들이 반응
+            if (!isGeneralExclamation && !isTargetingSpecificPlayer && mentionedPlayerName === null) {
                 // 30% 확률로 랜덤 봇이 반응 (너무 많은 반응 방지)
                 if (Math.random() < 0.3) {
                     if (aliveBots.length > 0) {
@@ -4442,11 +4503,161 @@ class BotAI {
                         console.log(`[타겟 감지] 의심 키워드로 랜덤 타겟: ${randomBot.name}`);
                     }
                 }
+            } else {
+                if (isGeneralExclamation) {
+                    console.log(`[타겟 감지 제외] 일반적인 외침이므로 봇 반응 생략`);
+                } else if (isTargetingSpecificPlayer) {
+                    console.log(`[타겟 감지 제외] 특정 플레이어 "${mentionedPlayerName}"를 지목하는 메시지이므로 봇 반응 생략`);
+                }
             }
         }
+    }
 
         console.log(`[타겟 감지 결과] 메시지: "${chatMessage.message}" → 타겟된 봇들: [${targetedBots.map(bot => bot.name).join(', ')}]`);
         return targetedBots;
+    }
+
+    // 🆕 플레이어의 실제 모순 발언 확인
+    checkPlayerContradictions(roomCode, playerId) {
+        const history = this.gameHistory.get(roomCode);
+        if (!history || !history.playerStatements.has(playerId)) {
+            return [];
+        }
+
+        const statements = history.playerStatements.get(playerId);
+        const contradictions = [];
+
+        // 1. 역할 주장 모순
+        if (statements.roleClaims && statements.roleClaims.length > 1) {
+            const uniqueRoles = new Set(statements.roleClaims.map(claim => claim.role));
+            if (uniqueRoles.size > 1) {
+                const rolesList = Array.from(uniqueRoles).join(', ');
+                contradictions.push({
+                    type: 'role_claim',
+                    description: `여러 역할 주장: ${rolesList}`,
+                    severity: 'high'
+                });
+            }
+        }
+
+        // 2. 의심/신뢰 모순
+        if (statements.suspicionClaims && statements.trustClaims) {
+            for (const suspicion of statements.suspicionClaims) {
+                const laterTrust = statements.trustClaims.find(trust => 
+                    trust.target === suspicion.target && 
+                    trust.timestamp > suspicion.timestamp
+                );
+                if (laterTrust) {
+                    contradictions.push({
+                        type: 'trust_suspicion',
+                        description: `${suspicion.target}을 의심했다가 신뢰한다고 함`,
+                        severity: 'medium'
+                    });
+                }
+            }
+        }
+
+        // 3. 정보 주장과 실제 기록 불일치 (경찰의 경우)
+        if (statements.informationClaims && statements.informationClaims.length > 0) {
+            const actualInvestigations = this.findPlayerInvestigations(playerId, history);
+            const claimedInvestigations = statements.informationClaims.filter(claim => claim.type === 'investigation');
+            
+            if (claimedInvestigations.length > 0 && actualInvestigations.length === 0) {
+                contradictions.push({
+                    type: 'false_information',
+                    description: '조사 결과를 주장하지만 실제 조사 기록이 없음',
+                    severity: 'high'
+                });
+            }
+        }
+
+        return contradictions;
+    }
+
+    // 🆕 일반적인 외침이나 감탄사인지 판단
+    isGeneralExclamation(message) {
+        // 일반적인 외침 패턴들
+        const exclamationPatterns = [
+            /^마피아야!?$/,           // "마피아야", "마피아야!"
+            /^거짓말!?$/,             // "거짓말", "거짓말!"
+            /^의심스러워!?$/,         // "의심스러워", "의심스러워!"
+            /^수상해!?$/,             // "수상해", "수상해!"
+            /^이상해!?$/,             // "이상해", "이상해!"
+            /^마피아다!?$/,           // "마피아다", "마피아다!"
+            /^진짜\??$/,             // "진짜", "진짜?"
+            /^아니야!?$/,             // "아니야", "아니야!"
+            /^그래!?$/,               // "그래", "그래!"
+            /^그런가\??$/,            // "그런가", "그런가?"
+            /^맞아!?$/,               // "맞아", "맞아!"
+            /^어?!?$/,                // "어", "어!"
+            /^엥\??$/,                // "엥", "엥?"
+            /^헉!?$/,                 // "헉", "헉!"
+            /^어라\??$/,              // "어라", "어라?"
+            /^잠깐!?$/,               // "잠깐", "잠깐!"
+            /^아!?$/,                 // "아", "아!"
+            /^오!?$/,                 // "오", "오!"
+            /^우와!?$/,               // "우와", "우와!"
+            /^대박!?$/,               // "대박", "대박!"
+            /^진짜로\??$/,            // "진짜로", "진짜로?"
+            /^마피아 찾자!?$/,        // "마피아 찾자", "마피아 찾자!"
+            /^누가 마피아야\??$/,     // "누가 마피아야", "누가 마피아야?"
+            /^마피아 어디있어\??$/,   // "마피아 어디있어", "마피아 어디있어?"
+        ];
+
+        // 짧은 메시지 (4글자 이하)이면서 키워드만 포함하는 경우
+        if (message.length <= 4) {
+            const shortExclamations = ['마피아', '거짓말', '의심', '수상', '이상'];
+            return shortExclamations.some(word => message === word || message === word + '!');
+        }
+
+        // 패턴 매칭
+        return exclamationPatterns.some(pattern => pattern.test(message.trim()));
+    }
+
+    // 🆕 특정 플레이어를 지목하는 메시지인지 판단
+    isTargetingSpecificPlayer(message, room) {
+        if (!room) return false;
+        
+        // 모든 플레이어 이름 목록 가져오기
+        const allPlayerNames = [];
+        for (const player of room.players.values()) {
+            allPlayerNames.push(player.name.toLowerCase());
+        }
+        for (const bot of room.bots.values()) {
+            allPlayerNames.push(bot.name.toLowerCase());
+        }
+        
+        const lowerMessage = message.toLowerCase();
+        
+        // 플레이어 이름이 언급되었는지 확인
+        const mentionedPlayerName = allPlayerNames.find(name => lowerMessage.includes(name));
+        if (!mentionedPlayerName) {
+            return false; // 플레이어 이름이 없으면 특정 지목이 아님
+        }
+        
+        // 정규식 특수문자 이스케이프
+        const escapedPlayerName = mentionedPlayerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // 특정 플레이어를 지목하는 패턴들
+        const targetingPatterns = [
+            // "A가 마피아다", "A는 마피아야" 형태
+            new RegExp(`${escapedPlayerName}.{0,5}(가|는|이|을|를).{0,10}(마피아|의심|수상|이상|거짓말)`, 'i'),
+            // "A 마피아", "A 의심스럽다" 형태  
+            new RegExp(`${escapedPlayerName}.{0,5}(마피아|의심|수상|이상|거짓말)`, 'i'),
+            // "마피아는 A다", "의심스러운 건 A야" 형태
+            new RegExp(`(마피아|의심|수상|이상|거짓말).{0,10}(는|은|건).{0,10}${escapedPlayerName}`, 'i'),
+            // "A 투표", "A한테 투표" 형태
+            new RegExp(`${escapedPlayerName}.{0,10}(투표|뽑|선택)`, 'i'),
+            // 직접적인 지목 패턴
+            new RegExp(`${escapedPlayerName}.{0,5}(같|인|임|지|야|다|해|함)`, 'i')
+        ];
+        
+        // 패턴 중 하나라도 매칭되면 특정 플레이어 지목으로 판단
+        const isTargeting = targetingPatterns.some(pattern => pattern.test(lowerMessage));
+        
+        console.log(`[특정 플레이어 지목 분석] 플레이어: "${mentionedPlayerName}", 메시지: "${message}", 지목 여부: ${isTargeting}`);
+        
+        return isTargeting;
     }
 
     // 🆕 최근 봇 메시지 가져오기
