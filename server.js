@@ -17,6 +17,148 @@ class BotAI {
         this.botPersonalities = new Map(); // botId -> personality traits
         this.fakePoliceBots = new Map(); // roomCode -> fake police bot id
         this.fakeInvestigations = new Map(); // roomCode -> fake investigation history
+        // 🆕 봇 메시지 다양성 시스템
+        this.botMessageHistory = new Map(); // botId -> used messages array
+        this.messageWeights = new Map(); // botId -> { message: weight }
+        this.emotionalStates = new Map(); // botId -> emotional state
+    }
+
+    // === 봇 메시지 다양성 시스템 ===
+    
+    // 봇 메시지 히스토리 초기화
+    initializeBotMessageHistory(botId) {
+        if (!this.botMessageHistory.has(botId)) {
+            this.botMessageHistory.set(botId, []);
+            this.messageWeights.set(botId, new Map());
+            this.emotionalStates.set(botId, {
+                tension: 0.5, // 0.0 (편안) ~ 1.0 (극도긴장)
+                suspicion: 0.5, // 0.0 (신뢰) ~ 1.0 (의심)
+                confidence: 0.5, // 0.0 (불안) ~ 1.0 (확신)
+                anger: 0.0 // 0.0 (평온) ~ 1.0 (분노)
+            });
+        }
+    }
+
+    // 사용된 메시지 기록
+    recordUsedMessage(botId, message) {
+        this.initializeBotMessageHistory(botId);
+        
+        const history = this.botMessageHistory.get(botId);
+        const weights = this.messageWeights.get(botId);
+        
+        // 최근 사용된 메시지 기록 (최대 20개)
+        history.push({
+            message: message,
+            timestamp: Date.now(),
+            round: this.getCurrentRoundForBot(botId)
+        });
+        
+        if (history.length > 20) {
+            history.shift();
+        }
+        
+        // 가중치 감소 (같은 메시지는 재사용 확률 낮춤)
+        const currentWeight = weights.get(message) || 1.0;
+        weights.set(message, Math.max(0.1, currentWeight * 0.6));
+        
+        console.log(`[메시지 기록] ${botId}: "${message}" 사용됨 (가중치: ${weights.get(message).toFixed(2)})`);
+    }
+
+    // 메시지 중복도 검사
+    getMessageDiversityScore(botId, message) {
+        this.initializeBotMessageHistory(botId);
+        
+        const history = this.botMessageHistory.get(botId);
+        const weights = this.messageWeights.get(botId);
+        
+        // 최근 5개 메시지에서 완전 일치 검사
+        const recentMessages = history.slice(-5);
+        if (recentMessages.some(h => h.message === message)) {
+            return 0.1; // 최근에 사용한 메시지는 매우 낮은 점수
+        }
+        
+        // 유사도 검사 (키워드 기반)
+        const messageWords = message.toLowerCase().split(/\s+/);
+        let similarityPenalty = 0;
+        
+        for (const historyItem of history.slice(-10)) {
+            const historyWords = historyItem.message.toLowerCase().split(/\s+/);
+            const commonWords = messageWords.filter(word => historyWords.includes(word));
+            if (commonWords.length > 0) {
+                similarityPenalty += commonWords.length / messageWords.length * 0.3;
+            }
+        }
+        
+        // 가중치 기반 점수
+        const weightScore = weights.get(message) || 1.0;
+        
+        return Math.max(0.1, weightScore - similarityPenalty);
+    }
+
+    // 감정 상태 업데이트
+    updateEmotionalState(botId, gameContext) {
+        this.initializeBotMessageHistory(botId);
+        
+        const state = this.emotionalStates.get(botId);
+        const { round, alivePlayers, suspiciousPlayers, recentDeaths } = gameContext;
+        
+        // 라운드가 진행될수록 긴장도 증가
+        state.tension = Math.min(1.0, 0.3 + (round * 0.15));
+        
+        // 살아있는 플레이어 수가 적을수록 긴장도 증가  
+        if (alivePlayers <= 4) {
+            state.tension = Math.min(1.0, state.tension + 0.3);
+        }
+        
+        // 최근 죽음이 있으면 긴장도 증가
+        if (recentDeaths > 0) {
+            state.tension = Math.min(1.0, state.tension + 0.2);
+        }
+        
+        // 의심받는 상황이면 불안감 증가
+        if (suspiciousPlayers && suspiciousPlayers.some(p => p.id === botId)) {
+            state.confidence = Math.max(0.1, state.confidence - 0.3);
+            state.anger = Math.min(1.0, state.anger + 0.4);
+        }
+        
+        console.log(`[감정 상태] ${botId}: 긴장${state.tension.toFixed(2)} 의심${state.suspicion.toFixed(2)} 확신${state.confidence.toFixed(2)} 분노${state.anger.toFixed(2)}`);
+    }
+
+    // 현재 라운드 가져오기 (헬퍼)
+    getCurrentRoundForBot(botId) {
+        // 봇이 속한 방 찾기 (추후 개선 필요)
+        for (const [roomCode, history] of this.gameHistory) {
+            return history.rounds.length + 1; // 현재 진행중인 라운드
+        }
+        return 1;
+    }
+
+    // 가중치 기반 메시지 선택
+    selectDiverseMessage(botId, messageOptions) {
+        if (!messageOptions || messageOptions.length === 0) return null;
+        
+        // 각 메시지의 다양성 점수 계산
+        const scoredMessages = messageOptions.map(message => ({
+            message,
+            score: this.getMessageDiversityScore(botId, message)
+        }));
+        
+        // 점수 기반 가중치 선택
+        const totalScore = scoredMessages.reduce((sum, item) => sum + item.score, 0);
+        if (totalScore === 0) {
+            // 모든 메시지가 최근에 사용됨 - 랜덤 선택
+            return messageOptions[Math.floor(Math.random() * messageOptions.length)];
+        }
+        
+        let random = Math.random() * totalScore;
+        for (const item of scoredMessages) {
+            random -= item.score;
+            if (random <= 0) {
+                return item.message;
+            }
+        }
+        
+        return scoredMessages[0].message; // fallback
     }
 
     // 🔄 봇 지능 초기화 시스템
@@ -325,11 +467,15 @@ class BotAI {
 
         // 🆕 봇 반응형 채팅 트리거 - 실제 플레이어 발언에만 반응
         console.log(`[반응형 채팅 검사] 메시지 타입: ${messageData.type}, 방 존재: ${!!room}, 플레이어ID: ${messageData.playerId}, 봇인가: ${this.isBot(messageData.playerId, room)}`);
+        console.log(`[반응형 채팅 상세] 메시지: "${messageData.message}", 플레이어 이름: ${messageData.playerName}`);
+        
         if (messageData.type === 'player' && room && !this.isBot(messageData.playerId, room)) {
-            console.log(`[반응형 채팅 트리거] 조건 만족! 메시지: "${messageData.message}"`);
+            console.log(`[반응형 채팅 트리거] 조건 만족! 실제 플레이어 메시지: "${messageData.message}"`);
+            console.log(`[반응형 채팅 트리거] triggerReactiveBotChats 호출 시작`);
             this.triggerReactiveBotChats(room, chatMessage);
+            console.log(`[반응형 채팅 트리거] triggerReactiveBotChats 호출 완료`);
         } else {
-            console.log(`[반응형 채팅 건너뛰기] 조건 불만족`);
+            console.log(`[반응형 채팅 건너뛰기] 조건 불만족 - 타입:${messageData.type}, 방:${!!room}, 봇여부:${this.isBot(messageData.playerId, room)}`);
         }
 
         console.log(`[채팅 히스토리] 메시지 저장: ${messageData.playerName || '시스템'}: ${messageData.message}`);
@@ -2214,7 +2360,7 @@ class BotAI {
         }
     }
 
-    // 시민 봇 메시지 생성 (디시인사이드 말투)
+    // 시민 봇 메시지 생성 (디시인사이드 말투) - 🆕 대폭 개선된 다양성 시스템
     createCitizenMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
         // 고급 추리 시스템 사용
         const analysis = this.performAdvancedDeduction(room, bot);
@@ -2223,44 +2369,195 @@ class BotAI {
             return this.createSmartCitizenMessage(room, bot, phase, context, analysis);
         }
         
-        // 기존 로직 fallback (디시인사이드 말투)
-        const messages = [
-            "마피아들 어디있노 ㅋㅋ",
-            "누가 마피아인지 개궁금함",
-            "증거 봐야 투표하지 ㅇㅇ",
-            "신중하게 해야지 노답게임 되면 ㅅㅂ",
-            "마피아 숨어있는거 티남 ㅋㅋㅋ",
-            "진짜 마피아 누구임?",
-            "다들 어케 생각하는거임?",
-            "뭔가 이상한뎅...",
-            "확실한 증거 없으면 노답",
-            "마피아 개빨리 찾자 진짜 ㅋㅋ",
-            "이거 진짜 어렵네 ㅗㅗ",
-            "추리하는거 ㅈㄴ 힘들어",
-            "실화냐 이거?"
-        ];
+        // 🆕 감정 상태 업데이트
+        const alivePlayers = this.getAlivePlayers(room);
+        this.updateEmotionalState(bot.id, {
+            round: room.round,
+            alivePlayers: alivePlayers.length,
+            suspiciousPlayers: suspiciousPlayers,
+            recentDeaths: context.nightResults ? 1 : 0
+        });
         
-        // 🚨 **수정**: 자기 자신을 제외하고 실제로 채팅한 의심스러운 플레이어 중에서 선택
+        const emotionalState = this.emotionalStates.get(bot.id);
+        
+        // 🆕 대폭 확장된 메시지 풀 (감정 상태별)
+        let baseMessages = [];
+        
+        // 기본 마피아 찾기 메시지 (평상시)
+        if (!emotionalState || emotionalState.tension < 0.7) {
+            baseMessages = [
+                "마피아들 어디있노 ㅋㅋ",
+                "누가 마피아인지 개궁금함",
+                "증거 봐야 투표하지 ㅇㅇ",
+                "신중하게 해야지 노답게임 되면 ㅅㅂ",
+                "마피아 숨어있는거 티남 ㅋㅋㅋ",
+                "진짜 마피아 누구임?",
+                "다들 어케 생각하는거임?",
+                "뭔가 이상한뎅...",
+                "확실한 증거 없으면 노답",
+                "마피아 개빨리 찾자 진짜 ㅋㅋ",
+                "이거 진짜 어렵네 ㅗㅗ",
+                "추리하는거 ㅈㄴ 힘들어",
+                "실화냐 이거?",
+                "마피아 존나 잘 숨었네",
+                "단서라도 있었으면 좋겠는데",
+                "솔직히 누가 의심됨?",
+                "마피아새끼들 개교활함",
+                "이런 겜이 재밌나 싶기도하고",
+                "머리 터질거같아 진짜",
+                "논리적으로 생각해보자",
+                "뭔가 놓친게 있을텐데",
+                "마피아 찾는게 이렇게 어려웠나?",
+                "다들 연기를 너무 잘해 ㅅㅂ",
+                "의심가는 사람 좀 있긴한데",
+                "확신이 안서네 진짜",
+                "투표 잘못하면 개망함",
+                "시민끼리 싸우면 안되는데",
+                "마피아가 웃고있을거야",
+                "신중하게 판단하자고",
+                "정보가 부족해 개답답함",
+                "누구 말을 믿어야할지 모르겠어",
+                "마피아 개짜증나네 진짜",
+                "이 중에 진짜 마피아 있음?",
+                "뭔가 수상한 냄새가 남",
+                "직감적으로 이상한 사람 있음",
+                "말이 앞뒤 안맞는 놈 있지않나?",
+                "행동패턴 보면 알 수 있을텐데",
+                "마피아는 시민인척 연기하잖아",
+                "누가 거짓말하고 있는거임?",
+                "시민이면 당당해야지",
+                "뭔가 이상한 기운이 느껴짐",
+                "마피아 냄새나는 사람 있어",
+                "다들 너무 평온한데 괜찮나?",
+                "의심스러운 발언 한 사람 없나?",
+                "누구 투표 패턴이 이상했지?",
+                "마피아면 티날텐데..."
+            ];
+        } else {
+            // 고긴장 상태 메시지 (위험한 상황)
+            baseMessages = [
+                "ㅅㅂ 이제 정말 위험해졌어",
+                "마피아 진짜 빨리 찾아야함!!",
+                "개긴장되네 진짜 ㅗㅗ",
+                "이제 실수하면 게임 끝남",
+                "누가 마피아인지 확실히 알아야해",
+                "시간 없어!! 빨리 결정하자",
+                "이번이 마지막 기회일수도...",
+                "개떨리네 ㅅㅂ",
+                "마피아 놈들 이제 티 날거야",
+                "절대 속으면 안됨!!",
+                "지금까지 힌트 종합해보자",
+                "누가 제일 수상했는지 생각해봐",
+                "개중요한 순간이야 진짜",
+                "틀리면 다 죽어 ㅅㅂ",
+                "마피아 새끼 어디있어!!",
+                "이거 진짜 목숨걸린 문제야",
+                "누구든 확신있으면 말해줘",
+                "지금 아니면 기회 없어",
+                "개판날거같은 예감",
+                "마지막까지 포기하면 안돼"
+            ];
+        }
+        
+        // 🆕 분노 상태 메시지 추가
+        if (emotionalState && emotionalState.anger > 0.5) {
+            baseMessages.push(
+                "ㅅㅂ 누가 나 의심함??",
+                "개빡치네 진짜",
+                "억울하게 몰아가지마",
+                "나 시민인데 왜 의심해??",
+                "진짜 화나네 ㅗㅗ",
+                "말도안되는 의심하지마",
+                "증거도 없으면서 뭔소리야",
+                "개억울해 진짜",
+                "마피아가 나 몰아가는거 아냐?"
+            );
+        }
+        
+        // 🆕 특정 플레이어에 대한 의심 메시지 (동적 생성)
         const filteredSuspiciousPlayers = suspiciousPlayers.filter(p => p.player.id !== bot.id);
         const chattedSuspiciousPlayers = this.filterPlayersWhoChatted(room.code, filteredSuspiciousPlayers);
         if (chattedSuspiciousPlayers.length > 0) {
             const target = chattedSuspiciousPlayers[0];
-            messages.push(`${target.player.name} 개의심스러움 ㅋㅋ`);
-            messages.push(`${target.player.name} 행동이 개이상함`);
-            messages.push(`${target.player.name} 좀 수상한뎅?`);
-            messages.push(`${target.player.name} 마피아 아님? ㅋㅋㅋ`);
+            const suspicionMessages = [
+                `${target.player.name} 개의심스러움 ㅋㅋ`,
+                `${target.player.name} 행동이 개이상함`,
+                `${target.player.name} 좀 수상한뎅?`,
+                `${target.player.name} 마피아 아님? ㅋㅋㅋ`,
+                `${target.player.name} 말이 이상해`,
+                `${target.player.name} 뭔가 숨기는거같음`,
+                `${target.player.name} 연기하는거 티남`,
+                `${target.player.name} 개수상해 진짜`,
+                `${target.player.name} 눈빛이 이상함 ㅋㅋ`,
+                `${target.player.name} 거짓말쟁이 같은뎅`,
+                `${target.player.name} 마피아일 확률 높음`,
+                `${target.player.name} 투표 패턴도 이상하고`,
+                `${target.player.name} 진짜 의심됨 ㅅㅂ`,
+                `${target.player.name} 얘 마피아 맞지?`,
+                `${target.player.name} 도망가려는거 같은데`
+            ];
+            baseMessages.push(...suspicionMessages);
         }
         
-        // 🚨 **수정**: 자기 자신을 제외한 신뢰하는 플레이어 중에서 선택
+        // 🆕 신뢰하는 플레이어 메시지 (동적 생성)
         const filteredTrustedPlayers = trustedPlayers.filter(p => p.player.id !== bot.id);
         if (filteredTrustedPlayers.length > 0) {
             const trusted = filteredTrustedPlayers[0];
-            messages.push(`${trusted.player.name}은 믿을만함 ㅇㅇ`);
-            messages.push(`${trusted.player.name} 시민 같은뎅`);
-            messages.push(`${trusted.player.name} 개착해 보임`);
+            const trustMessages = [
+                `${trusted.player.name}은 믿을만함 ㅇㅇ`,
+                `${trusted.player.name} 시민 같은뎅`,
+                `${trusted.player.name} 개착해 보임`,
+                `${trusted.player.name} 진짜 같은편인듯`,
+                `${trusted.player.name} 말이 논리적임`,
+                `${trusted.player.name} 시민티 개많이남`,
+                `${trusted.player.name} 얘는 진짜 시민일거야`,
+                `${trusted.player.name} 믿고 따라가자`
+            ];
+            baseMessages.push(...trustMessages);
         }
         
-        return messages[Math.floor(Math.random() * messages.length)];
+        // 🆕 페이즈별 메시지 추가
+        if (phase === 'voting') {
+            baseMessages.push(
+                "투표 신중하게 하자고",
+                "잘못 투표하면 개망함",
+                "누구 투표할지 정했음?",
+                "확신없으면 투표하지마",
+                "이번 투표가 중요해",
+                "마피아한테 투표해야함",
+                "시민 죽이면 안돼 절대",
+                "투표 이유라도 말해줘",
+                "개중요한 선택이야",
+                "틀리면 게임 끝날수도",
+                "누구 손 들지 고민되네",
+                "확실한 마피아 없나?"
+            );
+        } else if (phase === 'discussion') {
+            baseMessages.push(
+                "토론 제대로 하자",
+                "정보 공유 좀 해줘",
+                "뭔가 알고있는거 없어?",
+                "다들 의견 말해봐",
+                "추리 같이 해보자",
+                "단서 찾아보자고",
+                "의심스러운 사람 있으면 말해",
+                "증거 있는 사람?",
+                "지금까지 무슨일 있었지?",
+                "밤에 뭔일 일어났나?",
+                "누구 죽었는지 확인해봐",
+                "경찰이나 의사 정보 있어?"
+            );
+        }
+        
+        // 🆕 다양성 시스템 적용한 메시지 선택
+        const selectedMessage = this.selectDiverseMessage(bot.id, baseMessages);
+        
+        // 사용된 메시지 기록
+        if (selectedMessage) {
+            this.recordUsedMessage(bot.id, selectedMessage);
+        }
+        
+        return selectedMessage || "마피아 찾아야지...";
     }
 
     // 스마트 시민 메시지 생성 (디시인사이드 말투)
@@ -2316,7 +2613,7 @@ class BotAI {
         return messages[Math.floor(Math.random() * messages.length)];
     }
 
-    // 경찰 봇 메시지 생성 (디시인사이드 말투)
+    // 경찰 봇 메시지 생성 (디시인사이드 말투) - 🆕 대폭 개선된 다양성 시스템
     createPoliceMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
         const analysis = this.performAdvancedDeduction(room, bot);
         
@@ -2324,22 +2621,181 @@ class BotAI {
             return this.createSmartPoliceMessage(room, bot, phase, context, analysis);
         }
         
-        // 기존 로직 fallback (디시인사이드 말투)
-        const messages = [
-            "조사결과 분석중임 ㅇㅇ",
-            "증거 보고 투표할거임",
-            "마피아 찾으려고 개노력중",
-            "정확한 정보 줄게 기다려",
-            "내가 경찰이니까 믿어줘 제발",
-            "수사진행중임 ㅋㅋ",
-            "마피아들 개잡아버릴거임",
-            "조사결과 곧 알려줄게 ㅇㅇ",
-            "진짜 경찰이 여기있어요",
-            "범인찾기 ㅈㄴ 어렵네",
-            "경찰 믿고 따라와 제발"
-        ];
+        // 🆕 감정 상태 업데이트
+        const alivePlayers = this.getAlivePlayers(room);
+        this.updateEmotionalState(bot.id, {
+            round: room.round,
+            alivePlayers: alivePlayers.length,
+            suspiciousPlayers: suspiciousPlayers,
+            recentDeaths: context.nightResults ? 1 : 0
+        });
         
-        return messages[Math.floor(Math.random() * messages.length)];
+        const emotionalState = this.emotionalStates.get(bot.id);
+        
+        // 🆕 대폭 확장된 경찰 메시지 풀 (감정 상태별)
+        let baseMessages = [];
+        
+        // 기본 경찰 업무 메시지 (평상시)
+        if (!emotionalState || emotionalState.tension < 0.7) {
+            baseMessages = [
+                "조사결과 분석중임 ㅇㅇ",
+                "증거 보고 투표할거임",
+                "마피아 찾으려고 개노력중",
+                "정확한 정보 줄게 기다려",
+                "내가 경찰이니까 믿어줘 제발",
+                "수사진행중임 ㅋㅋ",
+                "마피아들 개잡아버릴거임",
+                "조사결과 곧 알려줄게 ㅇㅇ",
+                "진짜 경찰이 여기있어요",
+                "범인찾기 ㅈㄴ 어렵네",
+                "경찰 믿고 따라와 제발",
+                "수사정보 차근차근 정리중",
+                "단서들 조합해서 분석해봄",
+                "경찰 직감으로는 뭔가 이상함",
+                "체계적으로 조사할거야",
+                "마피아 놈들 꼬리 잡힐거임",
+                "내 수사실력 믿어봐",
+                "경찰로서 책임감 느껴",
+                "정의구현 하려고 하는중",
+                "범죄자들 다 잡아버림",
+                "수사망 좁혀가고 있어",
+                "진실은 하나뿐이야",
+                "증거주의 원칙 지킬거임",
+                "의심가는 놈들 다 체크중",
+                "경찰 본능이 말하는데",
+                "수사기법 총동원할거야",
+                "진짜 경찰이 해결한다",
+                "사건해결까지 포기안해",
+                "마피아들 절대 못 숨어",
+                "경찰서에서 배운대로 할게",
+                "수사의 신이 될거야 ㅋㅋ",
+                "범인검거가 내 사명임",
+                "정확한 조사로 승부본다",
+                "경찰 뱃지가 내 자존심",
+                "마피아 색출작전 진행중",
+                "수사본능이 꿈틀거려"
+            ];
+        } else {
+            // 고긴장 상태 메시지 (위험한 상황)
+            baseMessages = [
+                "ㅅㅂ 시간 없어!! 빨리 조사해야함",
+                "지금까지 조사결과 총정리한다!!",
+                "경찰로서 마지막 수사다!!",
+                "개중요한 순간이야 믿어줘!!",
+                "이번에 못잡으면 다 죽어!!",
+                "경찰 생명걸고 수사했어!!",
+                "마피아 새끼들 이제 끝이야!!",
+                "수사결과 발표할 시간이다!!",
+                "경찰이 책임진다!! 따라와!!",
+                "진실 밝혀내겠어 개빡쳐!!",
+                "마피아놈들 관련자 다 잡아!!",
+                "경찰서 명예걸고 해결한다!!",
+                "범인 확정지었어!! 들어봐!!",
+                "수사종료!! 결론 발표한다!!",
+                "경찰 직감이 확신한다!!",
+                "이제 모든걸 밝혀낼 때야!!",
+                "마지막 기회다!! 믿어줘!!",
+                "수사완료!! 범인 지목한다!!",
+                "경찰로서 최종결론 내림!!",
+                "진실은 이거다!! 확신해!!"
+            ];
+        }
+        
+        // 🆕 역할 의심받을 때 방어 메시지
+        if (emotionalState && emotionalState.anger > 0.5) {
+            baseMessages.push(
+                "야 나 진짜 경찰이야!!",
+                "경찰 의심하지마 제발!!",
+                "내가 가짜 경찰이라고?? ㅅㅂ",
+                "진짜 경찰인데 왜 안믿어??",
+                "조사결과 보고도 의심함??",
+                "경찰서에서 파견나온거야!!",
+                "가짜경찰이랑 다르다고!!",
+                "내 조사실력 의심하지마!!",
+                "경찰 뱃지 보여줄까??",
+                "마피아가 나 몰아가는거야!!"
+            );
+        }
+        
+        // 🆕 조사 대상에 대한 메시지 (동적 생성)
+        const filteredSuspiciousPlayers = suspiciousPlayers.filter(p => p.player.id !== bot.id);
+        const chattedSuspiciousPlayers = this.filterPlayersWhoChatted(room.code, filteredSuspiciousPlayers);
+        if (chattedSuspiciousPlayers.length > 0) {
+            const target = chattedSuspiciousPlayers[0];
+            const investigationMessages = [
+                `${target.player.name} 수사대상 1순위임`,
+                `${target.player.name} 행동이 수상해서 조사중`,
+                `${target.player.name} 경찰 직감으로는 의심됨`,
+                `${target.player.name} 수사망에 걸렸어`,
+                `${target.player.name} 조사해볼 필요있음`,
+                `${target.player.name} 프로파일링 결과 수상`,
+                `${target.player.name} 경찰 본능이 말함`,
+                `${target.player.name} 범죄자 냄새남`,
+                `${target.player.name} 수사리스트 상위권`,
+                `${target.player.name} 마피아일 가능성 검토중`,
+                `${target.player.name} 증거수집 진행중`,
+                `${target.player.name} 수사파일 만들고있어`
+            ];
+            baseMessages.push(...investigationMessages);
+        }
+        
+        // 🆕 신뢰하는 플레이어에 대한 메시지 (동적 생성)
+        const filteredTrustedPlayers = trustedPlayers.filter(p => p.player.id !== bot.id);
+        if (filteredTrustedPlayers.length > 0) {
+            const trusted = filteredTrustedPlayers[0];
+            const trustMessages = [
+                `${trusted.player.name} 수사결과 깨끗함`,
+                `${trusted.player.name} 경찰이 보증한다`,
+                `${trusted.player.name} 시민으로 확신`,
+                `${trusted.player.name} 무혐의 처리함`,
+                `${trusted.player.name} 신뢰할만한 인물`,
+                `${trusted.player.name} 경찰 인증받음`,
+                `${trusted.player.name} 선량한 시민임`,
+                `${trusted.player.name} 수사에서 제외`
+            ];
+            baseMessages.push(...trustMessages);
+        }
+        
+        // 🆕 페이즈별 메시지 추가
+        if (phase === 'voting') {
+            baseMessages.push(
+                "경찰 수사결과 기준으로 투표해",
+                "내 조사 믿고 투표하자",
+                "경찰이 확신하는 후보 있어",
+                "수사증거 보고 결정해줘",
+                "경찰 정보 활용해서 투표",
+                "조사결과가 투표 근거야",
+                "경찰 직감 맞춰봐",
+                "수사완료된 대상 투표하자",
+                "경찰이 책임지고 지목함",
+                "조사자료 검토 후 투표해"
+            );
+        } else if (phase === 'discussion') {
+            baseMessages.push(
+                "수사정보 공유할게",
+                "조사과정 설명해줄까?",
+                "경찰 관점에서 분석해봄",
+                "수사결과 듣고싶으면 말해",
+                "범죄수법 분석해봤어",
+                "경찰 전문지식 공유함",
+                "수사기법으로 추리해보자",
+                "조사보고서 작성중",
+                "경찰서 교육받은대로 분석",
+                "수사자료 정리해서 발표할게",
+                "형사의 직감이 말하는데",
+                "범죄심리학적으로 보면"
+            );
+        }
+        
+        // 🆕 다양성 시스템 적용한 메시지 선택
+        const selectedMessage = this.selectDiverseMessage(bot.id, baseMessages);
+        
+        // 사용된 메시지 기록
+        if (selectedMessage) {
+            this.recordUsedMessage(bot.id, selectedMessage);
+        }
+        
+        return selectedMessage || "경찰로서 수사를 계속한다...";
     }
 
     // 스마트 경찰 메시지 생성 - 개선됨
@@ -2560,52 +3016,241 @@ class BotAI {
         return roleNames[role] || role;
     }
 
-    // 의사 봇 메시지 생성 (디시인사이드 말투)
+    // 의사 봇 메시지 생성 (디시인사이드 말투) - 🆕 대폭 개선된 다양성 시스템
     createDoctorMessage(room, bot, phase, context, suspiciousPlayers, trustedPlayers) {
-        const messages = [];
-
-        if (phase === 'discussion') {
-            if (context.nightResults) {
-                if (context.nightResults.killed) {
-                    const killedName = this.getPlayerNameById(context.nightResults.killed, room);
-                    messages.push(`${killedName} 살리지 못해서 죄송함... ㅠㅠ`);
-                    messages.push(`어젯밤 치료했는데 못 살렸음 ㅅㅂ`);
-                    messages.push(`아니 진짜 미안... 살릴 수 없었음`);
-                } else if (context.nightResults.saved) {
-                    // 의사가 성공적으로 치료한 경우 (직접적으로 말하지 않음)
-                    messages.push('다행히 어젯밤엔 아무도 안 죽었네 ㅇㅇ');
-                    messages.push('좋은 일임, 모두 살았어');
-                    messages.push('누군가 살렸나봄, 다행이다');
-                }
-            }
-            
-            // 보호적이고 평화로운 발언 (🚨 **수정**: 자기 자신 제외)
-            const filteredTrustedPlayers = trustedPlayers.filter(p => p.player.id !== bot.id);
-            if (filteredTrustedPlayers.length > 0) {
-                const trusted = filteredTrustedPlayers[0];
-                if (trusted && trusted.player && trusted.player.id) {
-                    const trustedName = this.getPlayerNameById(trusted.player.id, room);
-                    messages.push(`${trustedName} 보호해야겠음`);
-                    messages.push(`${trustedName} 개걱정됨`);
-                    messages.push(`${trustedName} 안전했으면 좋겠는뎅`);
-                }
-            }
-            
-            messages.push('모두 안전했으면 좋겠음 진짜');
-            messages.push('마피아 빨리 찾아서 평화롭게 하자');
-            messages.push('더 이상 희생자 없었으면 해 제발');
-            messages.push('누가 위험할까? 걱정됨');
-            messages.push('다들 조심해야함 ㅇㅇ');
-            messages.push('마피아가 누구 노릴까? 무서워');
-        } else if (phase === 'voting') {
-            messages.push('신중하게 투표해야함 ㅇㅇ');
-            messages.push('무고한 사람 투표하면 안됨');
-            messages.push('확실한 증거 있을 때 투표하자고');
-            messages.push('잘못 투표하면 ㅈㄴ 큰일남');
-            messages.push('정말 마피아인지 확실함?');
+        // 🆕 감정 상태 업데이트
+        const alivePlayers = this.getAlivePlayers(room);
+        this.updateEmotionalState(bot.id, {
+            round: room.round,
+            alivePlayers: alivePlayers.length,
+            suspiciousPlayers: suspiciousPlayers,
+            recentDeaths: context.nightResults ? 1 : 0
+        });
+        
+        const emotionalState = this.emotionalStates.get(bot.id);
+        
+        // 🆕 대폭 확장된 의사 메시지 풀 (감정 상태별)
+        let baseMessages = [];
+        
+        // 기본 의사 업무 메시지 (평상시)
+        if (!emotionalState || emotionalState.tension < 0.7) {
+            baseMessages = [
+                "모두 안전했으면 좋겠음 진짜",
+                "마피아 빨리 찾아서 평화롭게 하자",
+                "더 이상 희생자 없었으면 해 제발",
+                "누가 위험할까? 걱정됨",
+                "다들 조심해야함 ㅇㅇ",
+                "마피아가 누구 노릴까? 무서워",
+                "의사로서 모두 지켜야지",
+                "생명 구하는게 내 사명임",
+                "치료받을 사람 있으면 말해",
+                "의학적으로 분석해보면",
+                "환자들 안전이 최우선",
+                "히포크라테스 선서 지킬거야",
+                "의사 가운 입고 왔음 ㅋㅋ",
+                "병원에서 배운대로 할게",
+                "생명은 소중한거야",
+                "응급실 경험 살려서 판단함",
+                "의료진으로서 책임감 느껴",
+                "다치거나 위험한 사람 치료할게",
+                "건강관리 잘 하시고",
+                "의학 지식으로 도움될까?",
+                "수술용 메스 들고있음 ㅋㅋ",
+                "청진기로 심장소리 들어봤는데",
+                "의료진은 중립이야",
+                "환자 차별 안하는게 원칙",
+                "의료윤리 지키면서 할게",
+                "응급처치 필요한 사람?",
+                "진료차트 작성하고있어",
+                "의학박사 학위 믿어봐",
+                "병원 근무경력 10년임",
+                "의료사고 절대 안내겠어",
+                "환자 안전이 최우선이야",
+                "치료비는 나중에 계산하고",
+                "의료보험 처리해줄게",
+                "약 처방전 써줄까?",
+                "진단서 필요하면 말해",
+                "의료진으로서 중립 지킬게",
+                "생명윤리 위반 못해"
+            ];
+        } else {
+            // 고긴장 상태 메시지 (위험한 상황)
+            baseMessages = [
+                "ㅅㅂ 이제 정말 위험해!! 치료 제대로 해야함!!",
+                "의사로서 마지막까지 생명 구할거야!!",
+                "응급상황이야!! 빨리 치료해야해!!",
+                "이번에 못 살리면 다 죽어!!",
+                "의료진 총력전이다!! 누구든 살려내겠어!!",
+                "생명 구하는게 우선이야!! 마피아는 나중에!!",
+                "응급실 모드 켠다!! 모두 구해낼거야!!",
+                "의사 생명걸고 치료할게!!",
+                "히포크라테스가 살아있다면 이렇게 했을거야!!",
+                "의료진은 절대 포기 안해!!",
+                "수술실 확보하고 응급처치 시작!!",
+                "생명 살리는게 최우선이야!!",
+                "의료진으로서 마지막 책임진다!!",
+                "심폐소생술이라도 할거야!!",
+                "의료사고 절대 안내!! 모두 살리겠어!!",
+                "응급의학과 전문의 실력 보여줄게!!",
+                "생명은 하나뿐이야!! 포기 못해!!",
+                "의료진 명예걸고 구해낼거야!!",
+                "마지막까지 의료윤리 지킬게!!",
+                "죽음 앞에서도 의사 역할 할거야!!"
+            ];
         }
-
-        return messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : null;
+        
+        // 🆕 밤 결과별 특별 메시지
+        if (phase === 'discussion' && context.nightResults) {
+            if (context.nightResults.killed) {
+                const killedName = this.getPlayerNameById(context.nightResults.killed, room);
+                const sorrowMessages = [
+                    `${killedName} 살리지 못해서 죄송함... ㅠㅠ`,
+                    `어젯밤 치료했는데 못 살렸음 ㅅㅂ`,
+                    `아니 진짜 미안... 살릴 수 없었음`,
+                    `${killedName} 의료진으로서 죄송해`,
+                    `치료 시도했는데 실패했어...`,
+                    `의사로서 너무 무력감 느껴`,
+                    `${killedName} 구하지 못한게 한이야`,
+                    `응급처치 했는데 소용없었어`,
+                    `의학의 한계를 느꼈어...`,
+                    `${killedName} 가족분들께 죄송함`,
+                    `더 빨리 도착했으면... 후회돼`,
+                    `의료진으로서 책임감 느껴`
+                ];
+                baseMessages.push(...sorrowMessages);
+            } else if (context.nightResults.saved) {
+                // 의사가 성공적으로 치료한 경우 (직접적으로 말하지 않음)
+                const reliefMessages = [
+                    "다행히 어젯밤엔 아무도 안 죽었네 ㅇㅇ",
+                    "좋은 일임, 모두 살았어",
+                    "누군가 살렸나봄, 다행이다",
+                    "의료진이 잘 했나봐",
+                    "응급처치 성공한듯 해",
+                    "생명이 구해져서 다행이야",
+                    "의료진의 승리다!",
+                    "히포크라테스 선서가 지켜졌네",
+                    "응급의학의 힘이야",
+                    "치료 성공한것 같아서 기뻐"
+                ];
+                baseMessages.push(...reliefMessages);
+            } else {
+                // 아무 일 없었을 때
+                baseMessages.push(
+                    "평화로운 밤이었네",
+                    "다행히 환자 없었어",
+                    "응급실이 조용했음",
+                    "의료진도 쉴 수 있었어",
+                    "오늘은 치료할 일 없었네"
+                );
+            }
+        }
+        
+        // 🆕 역할 의심받을 때 방어 메시지
+        if (emotionalState && emotionalState.anger > 0.5) {
+            baseMessages.push(
+                "야 나 진짜 의사야!!",
+                "의사 면허증 보여줄까??",
+                "의대 졸업했다고!! 왜 안믿어??",
+                "스크럽 입고있는거 안보임??",
+                "청진기 들고있는데도 의심함??",
+                "히포크라테스 선서했다고!!",
+                "의료진 의심하지마!!",
+                "병원에서 파견온거야!!",
+                "의료보험 번호 알려줄까??",
+                "진짜 의사인데 왜 몰아가??",
+                "의료진한테 왜 이래??",
+                "환자 살리려는 사람 의심함??"
+            );
+        }
+        
+        // 🆕 보호 대상에 대한 메시지 (동적 생성)
+        const filteredTrustedPlayers = trustedPlayers.filter(p => p.player.id !== bot.id);
+        if (filteredTrustedPlayers.length > 0) {
+            const trusted = filteredTrustedPlayers[0];
+            if (trusted && trusted.player && trusted.player.id) {
+                const trustedName = this.getPlayerNameById(trusted.player.id, room);
+                const protectionMessages = [
+                    `${trustedName} 보호해야겠음`,
+                    `${trustedName} 개걱정됨`,
+                    `${trustedName} 안전했으면 좋겠는뎅`,
+                    `${trustedName} 치료 우선순위야`,
+                    `${trustedName} 의료진이 지켜줄게`,
+                    `${trustedName} 건강상태 체크해봐야겠어`,
+                    `${trustedName} 응급처치 준비해둘게`,
+                    `${trustedName} 의료보험 적용해줄게`,
+                    `${trustedName} 약 처방해줄까?`,
+                    `${trustedName} 정기검진 받아야해`,
+                    `${trustedName} 병원 VIP로 등록할게`,
+                    `${trustedName} 의료진이 책임진다`
+                ];
+                baseMessages.push(...protectionMessages);
+            }
+        }
+        
+        // 🆕 의심스러운 플레이어에 대한 의료진 관점 메시지
+        const filteredSuspiciousPlayers = suspiciousPlayers.filter(p => p.player.id !== bot.id);
+        const chattedSuspiciousPlayers = this.filterPlayersWhoChatted(room.code, filteredSuspiciousPlayers);
+        if (chattedSuspiciousPlayers.length > 0) {
+            const target = chattedSuspiciousPlayers[0];
+            const medicalSuspicionMessages = [
+                `${target.player.name} 심박수가 이상해`,
+                `${target.player.name} 스트레스 수치 높아보임`,
+                `${target.player.name} 혈압 측정해봐야겠네`,
+                `${target.player.name} 얼굴색이 안좋아`,
+                `${target.player.name} 건강검진 받아봐야할듯`,
+                `${target.player.name} 정신상태 체크 필요`,
+                `${target.player.name} 의학적으로 수상함`,
+                `${target.player.name} 진료기록 확인해볼게`,
+                `${target.player.name} CT 촬영 권함`,
+                `${target.player.name} 혈액검사 결과 궁금해`
+            ];
+            baseMessages.push(...medicalSuspicionMessages);
+        }
+        
+        // 🆕 페이즈별 메시지 추가
+        if (phase === 'voting') {
+            baseMessages.push(
+                "신중하게 투표해야함 ㅇㅇ",
+                "무고한 사람 투표하면 안됨",
+                "확실한 증거 있을 때 투표하자고",
+                "잘못 투표하면 ㅈㄴ 큰일남",
+                "정말 마피아인지 확실함?",
+                "의료진으로서 신중하게 판단",
+                "생명 관련된 투표야 조심해",
+                "히포크라테스 선서 생각해봐",
+                "의료윤리적으로 고민되네",
+                "환자 안전 고려해서 투표",
+                "의료진은 생명존중이 우선",
+                "진단 정확히 하고 투표하자",
+                "오진하면 안되는것처럼 신중히",
+                "의료진의 책임감으로 투표"
+            );
+        } else if (phase === 'discussion') {
+            baseMessages.push(
+                "의료진 관점에서 분석해볼게",
+                "건강상태로 판단해보면",
+                "의학지식 활용해서 추리하자",
+                "응급의학과 경험으로는",
+                "병원에서 본 사람들 특징으로는",
+                "의료진이니까 객관적으로 봄",
+                "진료차트 작성하듯 정리해보자",
+                "의학적 소견 말해줄까?",
+                "건강검진 결과 공유할게",
+                "의료진으로서 조언해줄게",
+                "히포크라테스 선서 기준으로",
+                "응급실 경험상 말하는건데"
+            );
+        }
+        
+        // 🆕 다양성 시스템 적용한 메시지 선택
+        const selectedMessage = this.selectDiverseMessage(bot.id, baseMessages);
+        
+        // 사용된 메시지 기록
+        if (selectedMessage) {
+            this.recordUsedMessage(bot.id, selectedMessage);
+        }
+        
+        return selectedMessage || "의료진으로서 최선을 다하겠습니다...";
     }
 
     // 마피아 봇 메시지 생성 (일반 채팅 - 기만과 속임수, 자연스러운 반말)
@@ -2676,42 +3321,205 @@ class BotAI {
             return this.createSmartMafiaMessage(room, bot, phase, context, analysis);
         }
         
-        // 기존 로직 fallback (시민인 척 연기하는 자연스러운 반말)
-        const messages = [
-            "마피아 찾아야 해",
-            "누가 의심스러워?",
-            "증거가 부족한데?",
-            "신중하게 생각해야지",
-            "진짜 마피아 누구야?",
-            "다들 어떻게 생각해?",
-            "확실한 증거 없으면 위험해",
-            "시민끼리 싸우면 안 되는데...",
-            "마피아가 웃고 있을 거야"
-        ];
+        // 🆕 감정 상태 업데이트
+        const alivePlayers = this.getAlivePlayers(room);
+        this.updateEmotionalState(bot.id, {
+            round: room.round,
+            alivePlayers: alivePlayers.length,
+            suspiciousPlayers: suspiciousPlayers,
+            recentDeaths: context.nightResults ? 1 : 0
+        });
         
-        // 🚨 **수정**: 자기 자신을 제외하고 실제로 채팅한 의심스러운 플레이어 중에서 선택
+        const emotionalState = this.emotionalStates.get(bot.id);
+        
+        // 🆕 대폭 확장된 마피아 메시지 풀 (교활한 시민 연기)
+        let baseMessages = [];
+        
+        // 기본 시민 연기 메시지 (평상시)
+        if (!emotionalState || emotionalState.tension < 0.7) {
+            baseMessages = [
+                "마피아 찾아야 해",
+                "누가 의심스러워?",
+                "증거가 부족한데?",
+                "신중하게 생각해야지",
+                "진짜 마피아 누구야?",
+                "다들 어떻게 생각해?",
+                "확실한 증거 없으면 위험해",
+                "시민끼리 싸우면 안 되는데...",
+                "마피아가 웃고 있을 거야",
+                "나도 시민이니까 같이 찾자",
+                "정말 어려운 게임이네",
+                "마피아가 너무 잘 숨었어",
+                "시민팀이 이겨야지",
+                "다들 힘내서 찾아보자",
+                "차분하게 분석해봐야겠어",
+                "성급하게 결정하면 안돼",
+                "논리적으로 접근해보자",
+                "모든 가능성 고려해야해",
+                "실수하면 안되니까 신중히",
+                "마피아가 교묘하게 숨어있을거야",
+                "시민들 의견 들어보고 싶어",
+                "협력해서 마피아 찾자",
+                "정보 공유가 중요할듯",
+                "의심만으로는 부족해",
+                "확실한 근거가 있어야지",
+                "추측만으로 판단하면 위험해",
+                "마피아 입장에서 생각해보면",
+                "시민이라면 당당해야지",
+                "거짓말할 이유가 없잖아",
+                "진실만 말하면 되는거 아냐?",
+                "시민끼리 믿고 가자",
+                "마피아는 분명 실수할거야",
+                "시간이 지나면 티날거야",
+                "인내심 갖고 기다려보자",
+                "마피아도 사람인데 완벽하진 않겠지",
+                "작은 단서라도 놓치면 안돼",
+                "관찰력이 중요한 게임이네",
+                "심리전이 흥미로워"
+            ];
+        } else {
+            // 고긴장 상태 메시지 (위험한 상황에서 더 교활하게)
+            baseMessages = [
+                "이제 정말 중요한 순간이야!!",
+                "마피아 놈들 더이상 숨지 못해!!",
+                "시민팀 힘내!! 거의 다 왔어!!",
+                "이번에 실수하면 정말 큰일나!!",
+                "마피아가 필사적으로 숨으려 할거야!!",
+                "시민들 속지말고 잘 판단해줘!!",
+                "지금까지의 정보 종합해보자!!",
+                "마피아 새끼들 이제 끝이야!!",
+                "시민팀 승리까지 조금 남았어!!",
+                "마지막까지 포기하지 말자!!",
+                "진실은 반드시 밝혀질거야!!",
+                "정의가 승리할거야!!",
+                "마피아들 떨고 있을거야!!",
+                "시민의 힘을 보여주자!!",
+                "거짓은 오래가지 못해!!",
+                "진실이 이기는 게임이야!!",
+                "마피아 놈들 관짝 준비해!!",
+                "시민팀 단결하면 이길 수 있어!!",
+                "마지막 스퍼트 달리자!!",
+                "승리는 우리 것이야!!"
+            ];
+        }
+        
+        // 🆕 교활한 의심 전환 메시지 (다른 시민을 의심하게 만들기)
         const filteredSuspiciousPlayers = suspiciousPlayers.filter(p => p.player.id !== bot.id);
         const chattedSuspiciousPlayers = this.filterPlayersWhoChatted(room.code, filteredSuspiciousPlayers);
         if (chattedSuspiciousPlayers.length > 0) {
             const target = chattedSuspiciousPlayers[0];
             
-            // 🔧 **수정**: 실제 모순 발언이 있는지 확인  
+            // 🔧 실제 모순 발언이 있는지 확인  
             const targetContradictions = this.checkPlayerContradictions(room.code, target.player.id);
             
-            messages.push(`${target.player.name} 좀 의심스럽네`);
-            messages.push(`${target.player.name} 어떻게 생각해?`);
-            messages.push(`${target.player.name} 행동이 이상하지 않아?`);
+            const suspicionMessages = [
+                `${target.player.name} 좀 의심스럽네`,
+                `${target.player.name} 어떻게 생각해?`,
+                `${target.player.name} 행동이 이상하지 않아?`,
+                `${target.player.name} 뭔가 수상한 느낌이야`,
+                `${target.player.name} 말투가 어색해`,
+                `${target.player.name} 너무 조용하지 않나?`,
+                `${target.player.name} 반응이 늦는것 같은데`,
+                `${target.player.name} 시민 맞나 의심됨`,
+                `${target.player.name} 뭔가 숨기는게 있는듯`,
+                `${target.player.name} 눈빛이 좀...`,
+                `${target.player.name} 대답을 회피하는것 같아`,
+                `${target.player.name} 솔직하지 않은느낌`,
+                `${target.player.name} 일관성이 없어보여`,
+                `${target.player.name} 변명이 너무 많아`,
+                `${target.player.name} 시민다운 느낌이 안나`
+            ];
             
             // 실제 모순이 있을 때만 "말이 앞뒤 안 맞는다" 언급
             if (targetContradictions.length > 0) {
-                messages.push(`${target.player.name} 말이 앞뒤가 안 맞는 것 같은데`);
+                suspicionMessages.push(`${target.player.name} 말이 앞뒤가 안 맞는 것 같은데`);
                 console.log(`[모순 발언 감지] ${bot.name}: ${target.player.name}의 실제 모순 발견 - ${targetContradictions[0].description}`);
-            } else {
-                messages.push(`${target.player.name} 뭔가 수상한 느낌이야`);
             }
+            
+            baseMessages.push(...suspicionMessages);
         }
         
-        return messages[Math.floor(Math.random() * messages.length)];
+        // 🆕 동료 마피아 보호 메시지 (은밀하게)
+        const filteredTrustedPlayers = trustedPlayers.filter(p => p.player.id !== bot.id);
+        const mafiaAllies = filteredTrustedPlayers.filter(p => p.player.role === 'mafia');
+        if (mafiaAllies.length > 0) {
+            const ally = mafiaAllies[0];
+            const protectionMessages = [
+                `${ally.player.name}는 믿을만해 보여`,
+                `${ally.player.name} 시민 같은데`,
+                `${ally.player.name} 말이 논리적이야`,
+                `${ally.player.name} 진실한 것 같아`,
+                `${ally.player.name} 의심할 이유 없어`,
+                `${ally.player.name} 시민팀이 확실해`,
+                `${ally.player.name} 같은편인것 같아`,
+                `${ally.player.name} 너무 의심하지 말자`
+            ];
+            baseMessages.push(...protectionMessages);
+        }
+        
+        // 🆕 분노 상태 메시지 (의심받을 때 교묘한 방어)
+        if (emotionalState && emotionalState.anger > 0.5) {
+            baseMessages.push(
+                "왜 나를 의심하는거야??",
+                "나도 시민인데 억울해",
+                "증거도 없으면서 의심하지마",
+                "시민끼리 싸우면 마피아만 좋잖아",
+                "내가 마피아라는 근거라도 있어?",
+                "그렇게 의심하면 게임 못해",
+                "나는 처음부터 시민팀이었어",
+                "마피아가 나 몰아가는거 아냐?",
+                "시민들은 단결해야 한다고",
+                "의심만 하지말고 증거 찾자",
+                "내 입장에서도 억울하다고",
+                "진짜 마피아는 따로 있을거야",
+                "왜 하필 나만 의심하는거야?",
+                "다른 사람들은 안의심함??",
+                "너무 성급하게 판단하는것 같아"
+            );
+        }
+        
+        // 🆕 페이즈별 교활한 메시지 추가
+        if (phase === 'voting') {
+            baseMessages.push(
+                "투표 신중하게 하자",
+                "확실하지 않으면 투표 말자",
+                "시민 죽이면 안되니까 조심해",
+                "마피아한테만 투표하자",
+                "근거 있는 투표가 중요해",
+                "감정적으로 투표하면 안돼",
+                "논리적 근거로 투표하자",
+                "시민팀 단합이 중요해",
+                "마피아 생각해보면서 투표",
+                "실수하면 우리가 불리해져",
+                "냉정하게 판단하고 투표",
+                "마피아 입장 고려해서 투표"
+            );
+        } else if (phase === 'discussion') {
+            baseMessages.push(
+                "정보 공유해서 마피아 찾자",
+                "다들 의견 말해줘",
+                "시민답게 토론하자",
+                "건설적인 의견 환영해",
+                "추리 과정 공유하자",
+                "시민팀 협력이 중요해",
+                "마피아 관점에서 생각해봐",
+                "논리적 추론 해보자",
+                "모든 가능성 열어두자",
+                "편견 없이 분석하자",
+                "객관적으로 접근해보자",
+                "시민 여러분 힘내요"
+            );
+        }
+        
+        // 🆕 다양성 시스템 적용한 메시지 선택
+        const selectedMessage = this.selectDiverseMessage(bot.id, baseMessages);
+        
+        // 사용된 메시지 기록
+        if (selectedMessage) {
+            this.recordUsedMessage(bot.id, selectedMessage);
+        }
+        
+        return selectedMessage || "시민으로서 마피아를 찾아야겠어...";
     }
 
     // 스마트 마피아 메시지 생성 (교묘한 자연스러운 반말)
@@ -3103,8 +3911,8 @@ class BotAI {
 
     // 📈 고급 추리 시스템 - 게임 상황 종합 분석
     performAdvancedDeduction(room, bot) {
-        const history = this.gameHistory.get(room.code);
-        if (!history) return null;
+            const history = this.gameHistory.get(room.code);
+            if (!history) return null;
 
         const alivePlayers = this.getAlivePlayers(room);
         const analysis = {
@@ -3396,7 +4204,7 @@ class BotAI {
                     threats.push({ player, threat: 'police', confidence: roleDeduction.confidence });
                 } else if (roleDeduction && roleDeduction.mostLikelyRole === 'doctor') {
                     threats.push({ player, threat: 'doctor', confidence: roleDeduction.confidence });
-                } else {
+                    } else {
                     unknowns.push({ player, mafiaLikelihood });
                 }
             } else {
@@ -3487,7 +4295,7 @@ class BotAI {
             } else if (profile.allyLevel > 60) {
                 priority += 75; // 신뢰받는 시민
                 console.log(`[마피아 우선순위] ${bot.name}: 신뢰받는 시민 ${profile.playerName} 타겟 (75)`);
-            } else {
+        } else {
                 priority += Math.min(60, profile.trustLevel); // 일반 시민 (상한선 설정)
             }
         } else {
@@ -4372,8 +5180,95 @@ class BotAI {
             }
         });
         
-        // 일반적인 발언에 대한 확률적 반응 (20% 확률)
-        if (Math.random() < 0.2 && (room.gameState === 'discussion' || room.gameState === 'voting')) {
+        // 🆕 특별 반응: "누가 마피아냐?" 질문에 경찰/가짜경찰 우선 응답
+        console.log(`[특별 반응 검사] 게임 상태: ${room.gameState}, 메시지: "${chatMessage.message}"`);
+        if (this.isAskingWhoIsMafia(chatMessage.message.toLowerCase()) && 
+            (room.gameState === 'discussion' || room.gameState === 'voting' || room.gameState === 'lobby')) {
+            
+            console.log(`[마피아 질문 특별 반응 시작] 조건 만족!`);
+            
+            // 경찰과 가짜 경찰 찾기
+            const policeBots = aliveBots.filter(bot => bot.role === 'police');
+            const fakePoliceBots = aliveBots.filter(bot => 
+                bot.role === 'mafia' && this.isFakePoliceBot(room.code, bot.id)
+            );
+            const allPoliceBots = [...policeBots, ...fakePoliceBots];
+            
+            console.log(`[마피아 질문 특별 반응] 경찰 관련 봇 ${allPoliceBots.length}명 발견`);
+            console.log(`[경찰 봇 목록] 진짜 경찰: ${policeBots.map(b => b.name).join(', ')}`);
+            console.log(`[가짜 경찰 봇 목록] 가짜 경찰: ${fakePoliceBots.map(b => b.name).join(', ')}`);
+            
+            if (allPoliceBots.length > 0) {
+                // 80% 확률로 경찰이 답변
+                if (Math.random() < 0.8) {
+                    const policeBot = allPoliceBots[Math.floor(Math.random() * allPoliceBots.length)];
+                    const delay = 1000 + Math.random() * 2000; // 1-3초 빠른 응답
+                    
+                    setTimeout(() => {
+                        if (room.gameState === chatMessage.gamePhase && policeBot.alive) {
+                            const responseMessage = this.generateGeneralResponse(room, policeBot, chatMessage);
+                            if (responseMessage) {
+                                console.log(`[경찰 우선 답변] ${policeBot.name} (${policeBot.role}): 마피아 질문에 답변`);
+                                
+                                this.addChatMessage(room.code, {
+                                    type: 'player',
+                                    playerId: policeBot.id,
+                                    playerName: policeBot.name,
+                                    message: responseMessage,
+                                    round: room.round,
+                                    gamePhase: room.gameState
+                                }, room);
+
+                                io.to(room.code).emit('chatMessage', {
+                                    type: 'player',
+                                    playerName: policeBot.name,
+                                    message: responseMessage,
+                                    timestamp: new Date()
+                                });
+                            }
+                        }
+                    }, delay);
+                }
+            }
+            
+            // 다른 봇들도 낮은 확률로 추가 반응 (30% 확률)
+            const otherBots = aliveBots.filter(bot => 
+                !allPoliceBots.some(pBot => pBot.id === bot.id) && 
+                bot.id !== chatMessage.playerId
+            );
+            
+            if (otherBots.length > 0 && Math.random() < 0.3) {
+                const randomBot = otherBots[Math.floor(Math.random() * otherBots.length)];
+                const delay = 4000 + Math.random() * 3000; // 4-7초 지연 응답
+                
+                setTimeout(() => {
+                    if (room.gameState === chatMessage.gamePhase && randomBot.alive) {
+                        const responseMessage = this.generateGeneralResponse(room, randomBot, chatMessage);
+                        if (responseMessage) {
+                            console.log(`[추가 반응] ${randomBot.name}: 마피아 질문에 추가 응답`);
+                            
+                            this.addChatMessage(room.code, {
+                                type: 'player',
+                                playerId: randomBot.id,
+                                playerName: randomBot.name,
+                                message: responseMessage,
+                                round: room.round,
+                                gamePhase: room.gameState
+                            }, room);
+
+                            io.to(room.code).emit('chatMessage', {
+                                type: 'player',
+                                playerName: randomBot.name,
+                                message: responseMessage,
+                                timestamp: new Date()
+                            });
+                        }
+                    }
+                }, delay);
+            }
+        }
+        // 일반적인 발언에 대한 확률적 반응 (20% 확률) - 마피아 질문이 아닌 경우만
+        else if (Math.random() < 0.2 && (room.gameState === 'discussion' || room.gameState === 'voting')) {
             const randomBot = aliveBots[Math.floor(Math.random() * aliveBots.length)];
             const delay = 3000 + Math.random() * 4000; // 3-7초 사이 응답
             
@@ -4673,9 +5568,9 @@ class BotAI {
 
     // 🆕 반응형 응답 생성
     generateReactiveResponse(room, bot, originalMessage) {
-        const message = originalMessage.message.toLowerCase();
-        const senderName = originalMessage.playerName;
-        
+            const message = originalMessage.message.toLowerCase();
+            const senderName = originalMessage.playerName;
+            
         // 역할별 방어 전략
         let response = null;
         switch (bot.role) {
@@ -4849,10 +5744,33 @@ class BotAI {
         return responses[Math.floor(Math.random() * responses.length)];
     }
 
-    // 🆕 일반적인 반응 생성 (타겟되지 않은 경우, 디시인사이드 말투)
+        // 🆕 일반적인 반응 생성 (타겟되지 않은 경우, 디시인사이드 말투)
     generateGeneralResponse(room, bot, originalMessage) {
         const message = originalMessage.message.toLowerCase();
         const senderName = originalMessage.playerName;
+        
+        // 🆕 "누가 마피아냐?" 질문에 대한 경찰/가짜경찰 우선 응답
+        if (this.isAskingWhoIsMafia(message)) {
+            console.log(`[마피아 질문 감지] ${bot.name} (${bot.role}): "${originalMessage.message}" 질문 감지`);
+            
+            // 경찰이나 가짜 경찰이 우선적으로 답변
+            if (bot.role === 'police' || this.isFakePoliceBot(room.code, bot.id)) {
+                const investigationAnswer = this.generateInvestigationAnswer(room, bot);
+                if (investigationAnswer) {
+                    console.log(`[마피아 질문 답변] ${bot.name}: 조사 결과 기반 답변`);
+                    return investigationAnswer;
+                }
+            }
+            
+            // 다른 역할의 봇들도 추측으로 답변 (30% 확률)
+            if (Math.random() < 0.3) {
+                const guessAnswer = this.generateMafiaGuess(room, bot);
+                if (guessAnswer) {
+                    console.log(`[마피아 질문 답변] ${bot.name}: 추측 기반 답변`);
+                    return guessAnswer;
+                }
+            }
+        }
         
         // 특정 키워드에 대한 일반적인 반응
         if (message.includes('마피아를 찾')) {
@@ -4879,6 +5797,188 @@ class BotAI {
             'ㅇㅇ', 'ㄴㄴ', '그런뎅?', '개궁금하네'
         ];
         return Math.random() < 0.2 ? casualResponses[Math.floor(Math.random() * casualResponses.length)] : null;
+    }
+
+    // 🆕 "누가 마피아냐?" 질문인지 감지
+    isAskingWhoIsMafia(message) {
+        console.log(`[마피아 질문 감지 시도] 메시지: "${message}"`);
+        
+        const mafiaQuestionPatterns = [
+            // 한글 패턴
+            /누가.*마피아/,
+            /마피아.*누구/,
+            /마피아가.*누구/,
+            /누가.*마피아야/,
+            /마피아.*누군가/,
+            /마피아는.*누구/,
+            /마피아.*어디/,
+            /어디.*마피아/,
+            /마피아.*찾/,
+            /찾.*마피아/,
+            /마피아.*알려/,
+            /알려.*마피아/,
+            /마피아.*말해/,
+            /말해.*마피아/,
+            // 단순 패턴
+            /누가 마피아/,
+            /마피아 누구/,
+            /누구 마피아/,
+            /마피아야/,
+            /마피아냐/,
+            // 영어 테스트 패턴  
+            /who.*mafia/,
+            /mafia.*who/,
+            /who is mafia/
+        ];
+        
+        const isMatch = mafiaQuestionPatterns.some(pattern => {
+            const match = pattern.test(message);
+            if (match) {
+                console.log(`[마피아 질문 매칭] 패턴 "${pattern}" 매칭됨!`);
+            }
+            return match;
+        });
+        
+        console.log(`[마피아 질문 감지 결과] "${message}" → ${isMatch}`);
+        return isMatch;
+    }
+
+    // 🆕 조사 결과 기반 답변 생성
+    generateInvestigationAnswer(room, bot) {
+        const history = this.gameHistory.get(room.code);
+        if (!history) return null;
+
+        // 🔍 진짜 경찰의 경우 - 실제 조사 결과 확인
+        if (bot.role === 'police') {
+            let investigationsToCheck = [];
+            
+            // 현재 라운드 조사 결과 확인
+            if (history.currentRound && history.currentRound.investigations && history.currentRound.investigations.length > 0) {
+                investigationsToCheck = history.currentRound.investigations;
+            }
+            // 마지막 완료된 라운드에서 확인
+            else if (history.rounds.length > 0) {
+                const lastRound = history.rounds[history.rounds.length - 1];
+                if (lastRound.investigations && lastRound.investigations.length > 0) {
+                    investigationsToCheck = lastRound.investigations;
+                }
+            }
+            
+            // 자신의 조사 결과가 있으면 발표
+            for (const investigation of investigationsToCheck) {
+                if (investigation.investigator === bot.id) {
+                    const targetName = this.getPlayerName(investigation.target, room);
+                    if (investigation.result === 'mafia') {
+                        const mafiaAnswers = [
+                            `${targetName}이 마피아야! 내가 조사했어!`,
+                            `${targetName} 마피아 확실해! 조사결과임!`,
+                            `내가 경찰인데 ${targetName} 마피아라고!`,
+                            `${targetName}! 조사해보니 마피아였어!`,
+                            `${targetName} 마피아임! 경찰 조사결과야!`
+                        ];
+                        return mafiaAnswers[Math.floor(Math.random() * mafiaAnswers.length)];
+                    } else {
+                        const innocentAnswers = [
+                            `${targetName}은 시민이야, 조사했어`,
+                            `${targetName} 마피아 아님! 조사결과야`,
+                            `내가 조사한 ${targetName}은 무고해`,
+                            `${targetName} 시민 확정! 경찰 보장!`,
+                            `${targetName}은 믿어도 돼, 시민이야`
+                        ];
+                        return innocentAnswers[Math.floor(Math.random() * innocentAnswers.length)];
+                    }
+                }
+            }
+        }
+
+        // 🎭 가짜 경찰의 경우 - 거짓 조사 결과 확인
+        if (this.isFakePoliceBot(room.code, bot.id)) {
+            const fakeInvestigations = this.fakeInvestigations.get(room.code) || [];
+            
+            // 발표할 거짓 조사 결과가 있는지 확인
+            for (const fakeInv of fakeInvestigations) {
+                if (fakeInv.investigator === bot.id) {
+                    if (fakeInv.result === 'mafia') {
+                        const fakeMafiaAnswers = [
+                            `${fakeInv.targetName}이 마피아야! 내가 조사했어!`,
+                            `${fakeInv.targetName} 마피아 확실해! 조사결과임!`,
+                            `내가 경찰인데 ${fakeInv.targetName} 마피아라고!`,
+                            `${fakeInv.targetName}! 조사해보니 마피아였어!`,
+                            `${fakeInv.targetName} 마피아임! 경찰 조사결과야!`
+                        ];
+                        console.log(`[거짓 조사 발표] ${bot.name}: ${fakeInv.targetName}을 마피아로 거짓 발표`);
+                        return fakeMafiaAnswers[Math.floor(Math.random() * fakeMafiaAnswers.length)];
+                    } else {
+                        const fakeInnocentAnswers = [
+                            `${fakeInv.targetName}은 시민이야, 조사했어`,
+                            `${fakeInv.targetName} 마피아 아님! 조사결과야`,
+                            `내가 조사한 ${fakeInv.targetName}은 무고해`,
+                            `${fakeInv.targetName} 시민 확정! 경찰 보장!`,
+                            `${fakeInv.targetName}은 믿어도 돼, 시민이야`
+                        ];
+                        console.log(`[거짓 조사 발표] ${bot.name}: ${fakeInv.targetName}을 시민으로 거짓 발표`);
+                        return fakeInnocentAnswers[Math.floor(Math.random() * fakeInnocentAnswers.length)];
+                    }
+                }
+            }
+            
+            // 거짓 조사 결과가 없으면 경찰 주장과 함께 준비중이라고 답변
+            const preparingAnswers = [
+                `나 경찰인데 아직 조사중이야`,
+                `경찰로서 조사하고 있어, 곧 알려줄게`,
+                `내가 경찰이니까 기다려봐`,
+                `조사 결과 나오면 바로 알려줄게`,
+                `경찰인 내가 확인하고 있어`
+            ];
+            return preparingAnswers[Math.floor(Math.random() * preparingAnswers.length)];
+        }
+
+        return null;
+    }
+
+    // 🆕 추측 기반 마피아 지목 답변 생성
+    generateMafiaGuess(room, bot) {
+        const history = this.gameHistory.get(room.code);
+        if (!history) return null;
+
+        const alivePlayers = this.getAlivePlayers(room).filter(p => p.id !== bot.id);
+        const suspiciousPlayers = this.getMostSuspiciousPlayers(history, alivePlayers);
+        
+        // 🚨 마피아 봇의 경우 동료 마피아는 제외하고 시민을 지목
+        let targetsToMention = [];
+        if (bot.role === 'mafia') {
+            targetsToMention = alivePlayers.filter(p => p.role !== 'mafia');
+        } else {
+            targetsToMention = alivePlayers;
+        }
+        
+        // 채팅한 플레이어 중에서 선택
+        const chattedTargets = this.filterPlayersWhoChatted(room.code, targetsToMention.map(p => ({ player: p })));
+        
+        if (chattedTargets.length > 0) {
+            const randomTarget = chattedTargets[Math.floor(Math.random() * chattedTargets.length)];
+            const targetName = randomTarget.player.name;
+            
+            const guessAnswers = [
+                `${targetName} 의심스러워 보이는뎅?`,
+                `내 생각엔 ${targetName}이 마피아 같아`,
+                `${targetName} 행동이 좀 이상한 것 같은데`,
+                `${targetName} 마피아 아닐까? 느낌상`,
+                `잘 모르겠지만 ${targetName} 의심됨`,
+                `${targetName} 좀 수상해 보이지 않아?`
+            ];
+            return guessAnswers[Math.floor(Math.random() * guessAnswers.length)];
+        }
+        
+        // 채팅한 플레이어가 없으면 일반적인 답변
+        const generalAnswers = [
+            `아직 확실하지 않아, 더 지켜봐야겠어`,
+            `좀 더 관찰해봐야 알 것 같아`,
+            `아직 모르겠어, 증거가 더 필요해`,
+            `확실한 증거 없으면 말하기 어려워`,
+            `지금은 모르겠어, 더 생각해봐야지`
+        ];
+        return generalAnswers[Math.floor(Math.random() * generalAnswers.length)];
     }
 }
 
