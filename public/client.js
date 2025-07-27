@@ -891,8 +891,7 @@ function getAlivePlayersForSelection(action) {
             // 경찰은 자기 자신을 수사할 필요 없음
             if (player.id === socket.id) return false;
         } else if (action === 'save') {
-            // 의사는 자기 자신을 치료할 수 없음
-            if (player.id === socket.id) return false;
+            // 의사는 자기 자신도 치료할 수 있음 (자기 보호 가능)
         } else if (action === 'swap') {
             // 마법사는 자기 자신과 직업을 교환할 수 없음
             if (player.id === socket.id) return false;
